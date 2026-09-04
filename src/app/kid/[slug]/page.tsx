@@ -1,0 +1,74 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { PointsBadge } from "@/components/PointsBadge";
+import { TaskCard } from "@/components/TaskCard";
+import { getChildBySlug } from "@/lib/child";
+import { getPointsBalance } from "@/lib/points";
+import { getOrCreateTodayTasks } from "@/lib/tasks";
+
+import { completeTaskAction } from "./actions";
+
+// 今日任务、积分都是实时数据，不能被 next build 预渲染成静态页面。
+export const dynamic = "force-dynamic";
+
+// 手机浏览器"添加到主屏幕"时会用这个标题命名桌面图标，按孩子名字区分。
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const child = await getChildBySlug(slug);
+  return { title: child ? `${child.name}的打卡` : "打卡小星星" };
+}
+
+export default async function KidHomePage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const child = await getChildBySlug(slug);
+  if (!child) notFound();
+
+  const [tasks, balance] = await Promise.all([
+    getOrCreateTodayTasks(child.id),
+    getPointsBalance(child.id),
+  ]);
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col gap-6 bg-sky-50 p-5">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-800">
+          {child.name} 的今日任务
+        </h1>
+        <PointsBadge balance={balance} />
+      </header>
+
+      <section className="flex flex-col gap-3">
+        {tasks.length === 0 ? (
+          <p className="rounded-2xl bg-white p-6 text-center text-lg text-slate-500">
+            今天还没有任务，休息一下吧 🌤️
+          </p>
+        ) : (
+          tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              completeAction={completeTaskAction.bind(null, slug, task.id)}
+            />
+          ))
+        )}
+      </section>
+
+      <Link
+        href={`/kid/${slug}/rewards`}
+        className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-pink-400 px-6 py-4 text-xl font-bold text-white shadow"
+      >
+        🎁 礼物橱窗
+      </Link>
+    </main>
+  );
+}

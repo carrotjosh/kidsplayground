@@ -1,0 +1,45 @@
+const TIME_ZONE = "Asia/Shanghai";
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+/** 按中国时区返回"今天"的日期字符串，格式 YYYY-MM-DD。所有"今天是哪天"的判断都必须走这个函数。 */
+export function todayDateString(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/** 按中国时区返回今天是星期几：0=周日 ... 6=周六，对应 TaskTemplate.weekdays 的取值。 */
+export function todayWeekday(now: Date = new Date()): number {
+  const weekdayName = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    weekday: "short",
+  }).format(now);
+  return WEEKDAY_INDEX[weekdayName];
+}
+
+/** 把 YYYY-MM-DD 转成 UTC 零点的 Date，用于写入 @db.Date 字段，避免本地时区偏移导致日期错位。 */
+export function dateStringToUtcDate(dateString: string): Date {
+  return new Date(`${dateString}T00:00:00.000Z`);
+}
+
+/** 按中国时区计算的"今天"，转换成可直接存入 DailyTask.date 的 Date。 */
+export function todayAsUtcDate(now: Date = new Date()): Date {
+  return dateStringToUtcDate(todayDateString(now));
+}
+
+/** 把用 dateStringToUtcDate 存进数据库的 @db.Date 值，格式化回 YYYY-MM-DD 用于展示。 */
+export function formatStoredDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
