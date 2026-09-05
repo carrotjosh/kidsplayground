@@ -38,7 +38,7 @@ export default async function PointsPage() {
           entries.map((entry) => (
             <div
               key={entry.id}
-              className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <div>
                 <p className="text-sm text-slate-400">

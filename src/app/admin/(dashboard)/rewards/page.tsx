@@ -24,7 +24,7 @@ export default async function RewardsAdminPage() {
           rewards.map((reward) => (
             <div
               key={reward.id}
-              className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <p className="font-semibold">
                 {reward.emoji} {reward.title}（{reward.cost} 分）
@@ -34,8 +34,8 @@ export default async function RewardsAdminPage() {
                   type="submit"
                   className={
                     reward.active
-                      ? "rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-600"
-                      : "rounded-lg bg-emerald-500 px-3 py-1 text-sm text-white"
+                      ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
+                      : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
                   }
                 >
                   {reward.active ? "下架" : "上架"}

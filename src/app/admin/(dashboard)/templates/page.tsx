@@ -33,7 +33,7 @@ export default async function TemplatesPage() {
           templates.map((template) => (
             <div
               key={template.id}
-              className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <div>
                 <p className="font-semibold">
@@ -46,8 +46,8 @@ export default async function TemplatesPage() {
                   type="submit"
                   className={
                     template.active
-                      ? "rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-600"
-                      : "rounded-lg bg-emerald-500 px-3 py-1 text-sm text-white"
+                      ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
+                      : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
                   }
                 >
                   {template.active ? "停用" : "启用"}

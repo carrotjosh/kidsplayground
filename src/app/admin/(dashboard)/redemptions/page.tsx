@@ -21,7 +21,7 @@ export default async function RedemptionsPage() {
           redemptions.map((redemption) => (
             <div
               key={redemption.id}
-              className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <div>
                 <p className="text-sm text-slate-400">
@@ -36,13 +36,13 @@ export default async function RedemptionsPage() {
                 <form action={fulfillAction.bind(null, redemption.id)}>
                   <button
                     type="submit"
-                    className="rounded-lg bg-amber-500 px-3 py-1 text-sm text-white"
+                    className="pixel-btn bg-nes-yellow px-3 py-1 text-sm text-nes-black"
                   >
                     标记已兑现
                   </button>
                 </form>
               ) : (
-                <span className="rounded-lg bg-emerald-100 px-3 py-1 text-sm text-emerald-700">
+                <span className="pixel-border bg-emerald-100 px-3 py-1 text-sm text-emerald-700">
                   已兑现
                 </span>
               )}

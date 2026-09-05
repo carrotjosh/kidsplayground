@@ -29,15 +29,15 @@ export default async function RewardsPage({
   ]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col gap-6 bg-pink-50 p-5">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">礼物橱窗 🎁</h1>
+    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="pixel-text-outline text-2xl font-bold text-white">礼物橱窗 🎁</h1>
         <PointsBadge balance={balance} />
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {rewards.length === 0 ? (
-          <p className="col-span-full rounded-2xl bg-white p-6 text-center text-lg text-slate-500">
+          <p className="pixel-card col-span-full bg-white p-6 text-center text-lg text-slate-500">
             还没有礼物，等家长上架吧～
           </p>
         ) : (
@@ -46,11 +46,11 @@ export default async function RewardsPage({
             return (
               <div
                 key={reward.id}
-                className="flex flex-col items-center gap-2 rounded-2xl bg-white p-5 text-center shadow-sm"
+                className="pixel-card flex flex-col items-center gap-2 bg-white p-5 text-center"
               >
                 <span className="text-5xl">{reward.emoji ?? "🎁"}</span>
-                <p className="text-lg font-semibold text-slate-800">{reward.title}</p>
-                <p className="text-amber-600">{reward.cost} 分</p>
+                <p className="text-lg font-bold text-slate-800">{reward.title}</p>
+                <p className="pixel-font text-[10px] text-nes-brown">{reward.cost} 分</p>
                 <RedeemButton
                   redeemAction={redeemRewardAction.bind(null, slug, reward.id)}
                   disabled={!enough}
@@ -64,7 +64,7 @@ export default async function RewardsPage({
 
       <Link
         href={`/kid/${slug}`}
-        className="flex items-center justify-center gap-2 rounded-2xl bg-sky-400 px-6 py-4 text-xl font-bold text-white shadow"
+        className="pixel-btn flex items-center justify-center gap-2 bg-nes-sky px-6 py-4 text-xl font-bold text-white"
       >
         ⬅️ 回到今日任务
       </Link>

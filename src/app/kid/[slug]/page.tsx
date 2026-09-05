@@ -39,9 +39,9 @@ export default async function KidHomePage({
   ]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col gap-6 bg-sky-50 p-5">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">
+    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="pixel-text-outline text-2xl font-bold text-white">
           {child.name} 的今日任务
         </h1>
         <PointsBadge balance={balance} />
@@ -49,7 +49,7 @@ export default async function KidHomePage({
 
       <section className="flex flex-col gap-3">
         {tasks.length === 0 ? (
-          <p className="rounded-2xl bg-white p-6 text-center text-lg text-slate-500">
+          <p className="pixel-card bg-white p-6 text-center text-lg text-slate-500">
             今天还没有任务，休息一下吧 🌤️
           </p>
         ) : (
@@ -65,7 +65,7 @@ export default async function KidHomePage({
 
       <Link
         href={`/kid/${slug}/rewards`}
-        className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-pink-400 px-6 py-4 text-xl font-bold text-white shadow"
+        className="pixel-btn animate-bounce-slow mt-4 flex items-center justify-center gap-2 bg-nes-pink px-6 py-4 text-xl font-bold text-white"
       >
         🎁 礼物橱窗
       </Link>

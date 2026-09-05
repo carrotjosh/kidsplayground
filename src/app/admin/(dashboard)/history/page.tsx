@@ -23,7 +23,7 @@ export default async function HistoryPage() {
           tasks.map((task) => (
             <div
               key={task.id}
-              className="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"
+              className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <div>
                 <p className="text-sm text-slate-400">
@@ -38,7 +38,7 @@ export default async function HistoryPage() {
                 <form action={revokeAction.bind(null, task.id)}>
                   <button
                     type="submit"
-                    className="rounded-lg border border-red-300 px-3 py-1 text-sm text-red-500"
+                    className="pixel-btn bg-white px-3 py-1 text-sm text-nes-red"
                   >
                     撤销
                   </button>
@@ -47,7 +47,7 @@ export default async function HistoryPage() {
                 <form action={markCompleteAction.bind(null, task.id)}>
                   <button
                     type="submit"
-                    className="rounded-lg bg-emerald-500 px-3 py-1 text-sm text-white"
+                    className="pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
                   >
                     补打卡
                   </button>

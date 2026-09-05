@@ -1,14 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Press_Start_2P, ZCOOL_KuaiLe } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// 像素字体只覆盖英文/数字，专门用在积分数字这类场景。
+const pixelFont = Press_Start_2P({
+  variable: "--font-pixel",
+  weight: "400",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// 圆润活泼的中文字体，撑起整体的游戏感，中文字符也能显示。
+const playfulFont = ZCOOL_KuaiLe({
+  variable: "--font-playful",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -21,7 +25,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${pixelFont.variable} ${playfulFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

@@ -25,8 +25,8 @@ export function RedeemButton({
         }}
         className={
           disabled
-            ? "cursor-not-allowed rounded-full bg-slate-200 px-5 py-3 text-lg font-bold text-slate-400"
-            : "rounded-full bg-pink-500 px-5 py-3 text-lg font-bold text-white shadow active:scale-95"
+            ? "pixel-btn cursor-not-allowed bg-slate-300 px-5 py-3 text-lg font-bold text-slate-500"
+            : "pixel-btn bg-nes-pink px-5 py-3 text-lg font-bold text-white"
         }
       >
         {label}

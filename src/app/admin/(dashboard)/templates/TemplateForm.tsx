@@ -18,7 +18,7 @@ export function TemplateForm() {
   const [error, formAction, isPending] = useActionState(createTemplateAction, null);
 
   return (
-    <form action={formAction} className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-sm">
+    <form action={formAction} className="flex flex-col gap-3 pixel-card bg-white p-5">
       <h2 className="font-semibold">新增周期性任务</h2>
 
       <div className="flex gap-3">
@@ -26,13 +26,13 @@ export function TemplateForm() {
           name="title"
           placeholder="任务名称，比如：读书20分钟"
           required
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+          className="flex-1 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="emoji"
           placeholder="emoji，比如 📖"
           maxLength={4}
-          className="w-28 rounded-lg border border-slate-300 px-3 py-2"
+          className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="points"
@@ -40,7 +40,7 @@ export function TemplateForm() {
           min={1}
           placeholder="分值"
           required
-          className="w-24 rounded-lg border border-slate-300 px-3 py-2"
+          className="w-24 rounded-none border-2 border-nes-black px-3 py-2"
         />
       </div>
 
@@ -58,7 +58,7 @@ export function TemplateForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="self-start rounded-lg bg-slate-800 px-4 py-2 text-white disabled:opacity-50"
+        className="pixel-btn self-start bg-nes-red px-4 py-2 text-white disabled:opacity-50"
       >
         {isPending ? "保存中..." : "新增任务模板"}
       </button>

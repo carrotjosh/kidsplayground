@@ -20,16 +20,23 @@ const NAV_ITEMS = [
 export default function AdminDashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-4">
-        <nav className="flex flex-wrap gap-4 text-sm font-medium">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-nes-black bg-nes-brown px-6 py-4">
+        <nav className="flex flex-wrap gap-4 text-sm font-bold">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className="text-slate-600 hover:text-slate-900">
+            <Link
+              key={item.href}
+              href={item.href}
+              className="pixel-text-outline text-white hover:text-nes-yellow"
+            >
               {item.label}
             </Link>
           ))}
         </nav>
         <form action={logoutAction}>
-          <button type="submit" className="text-sm text-slate-400 hover:text-slate-600">
+          <button
+            type="submit"
+            className="pixel-btn bg-nes-red px-3 py-1.5 text-sm font-bold text-white"
+          >
             退出登录
           </button>
         </form>

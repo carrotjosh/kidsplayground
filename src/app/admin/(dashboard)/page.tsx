@@ -24,19 +24,19 @@ export default async function AdminDashboardPage() {
       <h1 className="text-2xl font-bold">{child.name} 的仪表盘</h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl bg-white p-5 shadow-sm">
+        <div className="pixel-card bg-white p-5">
           <p className="text-sm text-slate-500">今日任务完成</p>
           <p className="text-3xl font-bold">
             {doneCount} / {tasks.length}
           </p>
         </div>
-        <div className="rounded-xl bg-white p-5 shadow-sm">
+        <div className="pixel-card bg-white p-5">
           <p className="text-sm text-slate-500">当前积分</p>
           <p className="text-3xl font-bold">{balance}</p>
         </div>
         <Link
           href="/admin/redemptions"
-          className="rounded-xl bg-white p-5 shadow-sm transition hover:bg-amber-50"
+          className="pixel-card bg-white p-5 transition hover:bg-amber-50"
         >
           <p className="text-sm text-slate-500">待兑现的兑换申请</p>
           <p className={`text-3xl font-bold ${pendingRedemptions > 0 ? "text-amber-600" : ""}`}>
@@ -45,7 +45,7 @@ export default async function AdminDashboardPage() {
         </Link>
       </div>
 
-      <div className="rounded-xl bg-white p-5 shadow-sm">
+      <div className="pixel-card bg-white p-5">
         <h2 className="mb-3 font-semibold">今日任务清单</h2>
         {tasks.length === 0 ? (
           <p className="text-slate-500">今天没有生成任何任务。</p>

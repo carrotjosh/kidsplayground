@@ -1,10 +1,10 @@
 export function PointsBadge({ balance }: { balance: number }) {
   return (
-    <div className="flex items-center gap-3 rounded-3xl bg-amber-100 px-6 py-4 shadow-sm">
-      <span className="text-4xl">🏆</span>
+    <div className="pixel-card flex items-center gap-3 bg-nes-yellow px-5 py-3">
+      <span className="animate-coin-spin text-4xl">🏆</span>
       <div>
-        <p className="text-sm font-medium text-amber-700">我的积分</p>
-        <p className="text-3xl font-bold text-amber-900">{balance}</p>
+        <p className="pixel-font text-[9px] text-nes-black">POINTS</p>
+        <p className="pixel-font pixel-text-outline text-2xl text-white">{balance}</p>
       </div>
     </div>
   );
