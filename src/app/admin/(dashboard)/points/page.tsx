@@ -9,6 +9,7 @@ const TYPE_LABELS: Record<string, string> = {
   REDEMPTION: "兑换礼物",
   MANUAL_ADJUST: "手动调整",
   TASK_REVOKE: "撤销打卡",
+  PLANT_SEED: "种植物",
 };
 
 export default async function PointsPage() {
@@ -25,7 +26,7 @@ export default async function PointsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">积分</h1>
+        <h1 className="text-2xl font-bold">阳光记录</h1>
         <p className="text-2xl font-bold text-amber-600">当前余额：{balance}</p>
       </div>
 
@@ -33,7 +34,7 @@ export default async function PointsPage() {
 
       <div className="flex flex-col gap-2">
         {entries.length === 0 ? (
-          <p className="text-slate-500">还没有积分流水。</p>
+          <p className="text-slate-500">还没有阳光流水。</p>
         ) : (
           entries.map((entry) => (
             <div

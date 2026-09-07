@@ -34,6 +34,18 @@ async function main() {
     });
   }
 
+  const plantTypeCount = await prisma.plantType.count({ where: { childId: child.id } });
+  if (plantTypeCount === 0) {
+    await prisma.plantType.createMany({
+      data: [
+        { childId: child.id, title: "向日葵", emoji: "🌻", cost: 15 },
+        { childId: child.id, title: "坚果墙", emoji: "🥜", cost: 20 },
+        { childId: child.id, title: "豌豆射手", emoji: "🟢", cost: 25 },
+        { childId: child.id, title: "樱桃炸弹", emoji: "🍒", cost: 35 },
+      ],
+    });
+  }
+
   console.log(`Seeded child: ${child.name} (slug: ${child.slug})`);
   console.log(`孩子端链接：/kid/${child.slug}`);
 }

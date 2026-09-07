@@ -9,12 +9,12 @@ export function AdjustPointsForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-3 pixel-card bg-white p-5">
-      <h2 className="font-semibold">手动加/减分</h2>
+      <h2 className="font-semibold">手动加/减阳光</h2>
       <div className="flex flex-wrap gap-3">
         <input
           name="amount"
           type="number"
-          placeholder="分值，减分填负数，比如 -5"
+          placeholder="阳光值，减少填负数，比如 -5"
           required
           className="w-56 rounded-none border-2 border-nes-black px-3 py-2"
         />

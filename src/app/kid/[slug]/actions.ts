@@ -5,13 +5,13 @@ import { revalidatePath } from "next/cache";
 import { getChildBySlug } from "@/lib/child";
 import { ActionError } from "@/lib/errors";
 import { redeemReward } from "@/lib/rewards";
-import { completeDailyTask } from "@/lib/tasks";
+import { submitDailyTaskForReview } from "@/lib/tasks";
 
-export async function completeTaskAction(slug: string, taskId: string) {
+export async function submitTaskAction(slug: string, taskId: string) {
   const child = await getChildBySlug(slug);
   if (!child) throw new ActionError("找不到这个孩子");
 
-  await completeDailyTask(taskId, child.id);
+  await submitDailyTaskForReview(taskId, child.id);
   revalidatePath(`/kid/${slug}`);
 }
 

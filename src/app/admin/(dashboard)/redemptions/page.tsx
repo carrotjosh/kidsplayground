@@ -28,7 +28,7 @@ export default async function RedemptionsPage() {
                   {redemption.createdAt.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
                 </p>
                 <p className="font-semibold">
-                  {redemption.rewardTitle}（{redemption.cost} 分）
+                  {redemption.rewardTitle}（{redemption.cost} 阳光）
                 </p>
               </div>
 

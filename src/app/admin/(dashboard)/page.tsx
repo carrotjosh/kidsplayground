@@ -1,19 +1,26 @@
 import Link from "next/link";
 
-import { RedemptionStatus } from "@/generated/prisma/client";
+import { RedemptionStatus, TaskStatus } from "@/generated/prisma/client";
 import { getPrimaryChild } from "@/lib/child";
+import { formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
+import { approveAction, rejectAction } from "./history/actions";
+
 export default async function AdminDashboardPage() {
   const child = await getPrimaryChild();
 
-  const [tasks, balance, pendingRedemptions] = await Promise.all([
+  const [tasks, balance, pendingRedemptions, pendingReviewTasks] = await Promise.all([
     getOrCreateTodayTasks(child.id),
     getPointsBalance(child.id),
     prisma.redemption.count({
       where: { childId: child.id, status: RedemptionStatus.REQUESTED },
+    }),
+    prisma.dailyTask.findMany({
+      where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -31,7 +38,7 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
         <div className="pixel-card bg-white p-5">
-          <p className="text-sm text-slate-500">当前积分</p>
+          <p className="text-sm text-slate-500">当前阳光</p>
           <p className="text-3xl font-bold">{balance}</p>
         </div>
         <Link
@@ -45,6 +52,35 @@ export default async function AdminDashboardPage() {
         </Link>
       </div>
 
+      {pendingReviewTasks.length > 0 && (
+        <div className="pixel-card bg-white p-5">
+          <h2 className="mb-3 font-semibold text-amber-600">
+            待审核任务（{pendingReviewTasks.length}）
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {pendingReviewTasks.map((task) => (
+              <li key={task.id} className="flex items-center justify-between text-sm">
+                <span>
+                  {formatStoredDate(task.date)} · {task.emoji} {task.title}（{task.points} 阳光）
+                </span>
+                <div className="flex gap-2">
+                  <form action={approveAction.bind(null, task.id)}>
+                    <button type="submit" className="pixel-btn bg-nes-green px-3 py-1 text-xs text-white">
+                      批准
+                    </button>
+                  </form>
+                  <form action={rejectAction.bind(null, task.id)}>
+                    <button type="submit" className="pixel-btn bg-white px-3 py-1 text-xs text-slate-600">
+                      打回
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="pixel-card bg-white p-5">
         <h2 className="mb-3 font-semibold">今日任务清单</h2>
         {tasks.length === 0 ? (
@@ -54,10 +90,18 @@ export default async function AdminDashboardPage() {
             {tasks.map((task) => (
               <li key={task.id} className="flex items-center justify-between text-sm">
                 <span>
-                  {task.emoji} {task.title}（{task.points} 分）
+                  {task.emoji} {task.title}（{task.points} 阳光）
                 </span>
-                <span className={task.status === "DONE" ? "text-emerald-600" : "text-slate-400"}>
-                  {task.status === "DONE" ? "已完成" : "未完成"}
+                <span
+                  className={
+                    task.status === "DONE"
+                      ? "text-emerald-600"
+                      : task.status === "PENDING_REVIEW"
+                        ? "text-amber-600"
+                        : "text-slate-400"
+                  }
+                >
+                  {task.status === "DONE" ? "已完成" : task.status === "PENDING_REVIEW" ? "待审核" : "未完成"}
                 </span>
               </li>
             ))}

@@ -1,44 +1,44 @@
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
 
-import { toggleRewardActiveAction } from "./actions";
-import { RewardForm } from "./RewardForm";
+import { togglePlantTypeActiveAction } from "./actions";
+import { PlantTypeForm } from "./PlantTypeForm";
 
-export default async function RewardsAdminPage() {
+export default async function PlantTypesAdminPage() {
   const child = await getPrimaryChild();
-  const rewards = await prisma.reward.findMany({
+  const plantTypes = await prisma.plantType.findMany({
     where: { childId: child.id },
     orderBy: { cost: "asc" },
   });
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">礼物清单</h1>
+      <h1 className="text-2xl font-bold">植物目录</h1>
 
-      <RewardForm />
+      <PlantTypeForm />
 
       <div className="flex flex-col gap-3">
-        {rewards.length === 0 ? (
-          <p className="text-slate-500">还没有礼物。</p>
+        {plantTypes.length === 0 ? (
+          <p className="text-slate-500">还没有植物。</p>
         ) : (
-          rewards.map((reward) => (
+          plantTypes.map((pt) => (
             <div
-              key={reward.id}
+              key={pt.id}
               className="flex items-center justify-between pixel-card bg-white p-4"
             >
               <p className="font-semibold">
-                {reward.emoji} {reward.title}（{reward.cost} 阳光）
+                {pt.emoji} {pt.title}（{pt.cost} 阳光）
               </p>
-              <form action={toggleRewardActiveAction.bind(null, reward.id, !reward.active)}>
+              <form action={togglePlantTypeActiveAction.bind(null, pt.id, !pt.active)}>
                 <button
                   type="submit"
                   className={
-                    reward.active
+                    pt.active
                       ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
                       : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
                   }
                 >
-                  {reward.active ? "下架" : "上架"}
+                  {pt.active ? "下架" : "上架"}
                 </button>
               </form>
             </div>

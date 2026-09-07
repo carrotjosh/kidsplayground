@@ -8,7 +8,7 @@ import { getChildBySlug } from "@/lib/child";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
-import { completeTaskAction } from "./actions";
+import { submitTaskAction } from "./actions";
 
 // 今日任务、积分都是实时数据，不能被 next build 预渲染成静态页面。
 export const dynamic = "force-dynamic";
@@ -39,17 +39,17 @@ export default async function KidHomePage({
   ]);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5">
+    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
       <header className="flex items-center justify-between gap-3">
-        <h1 className="pixel-text-outline text-2xl font-bold text-white">
+        <h1 className="pixel-text-outline text-2xl font-bold text-white lg:text-4xl 2xl:text-5xl">
           {child.name} 的今日任务
         </h1>
         <PointsBadge balance={balance} />
       </header>
 
-      <section className="flex flex-col gap-3">
+      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-5 xl:grid-cols-3">
         {tasks.length === 0 ? (
-          <p className="pixel-card bg-white p-6 text-center text-lg text-slate-500">
+          <p className="pixel-card col-span-full bg-white p-6 text-center text-lg text-slate-500 lg:p-10 lg:text-2xl">
             今天还没有任务，休息一下吧 🌤️
           </p>
         ) : (
@@ -57,18 +57,26 @@ export default async function KidHomePage({
             <TaskCard
               key={task.id}
               task={task}
-              completeAction={completeTaskAction.bind(null, slug, task.id)}
+              submitAction={submitTaskAction.bind(null, slug, task.id)}
             />
           ))
         )}
       </section>
 
-      <Link
-        href={`/kid/${slug}/rewards`}
-        className="pixel-btn animate-bounce-slow mt-4 flex items-center justify-center gap-2 bg-nes-pink px-6 py-4 text-xl font-bold text-white"
-      >
-        🎁 礼物橱窗
-      </Link>
+      <div className="mt-4 flex gap-3">
+        <Link
+          href={`/kid/${slug}/garden`}
+          className="pixel-btn flex flex-1 items-center justify-center gap-2 bg-nes-green px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
+        >
+          🌻 我的花园
+        </Link>
+        <Link
+          href={`/kid/${slug}/rewards`}
+          className="pixel-btn animate-bounce-slow flex flex-1 items-center justify-center gap-2 bg-nes-pink px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
+        >
+          🎁 礼物橱窗
+        </Link>
+      </div>
     </main>
   );
 }

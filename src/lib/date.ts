@@ -29,6 +29,27 @@ export function todayWeekday(now: Date = new Date()): number {
   return WEEKDAY_INDEX[weekdayName];
 }
 
+/**
+ * 给定 YYYY-MM-DD，返回是星期几（0=周日...6=周六）。用于回填历史日期的任务，
+ * 不能复用 todayWeekday()，那个只能算"现在"。用 UTC 解析：dateStringToUtcDate 产出的是
+ * 当天 UTC 零点，取"星期几"这种粒度不会因为 UTC 和 Asia/Shanghai 的 8 小时差而跨天错位。
+ */
+export function weekdayOfDateString(dateString: string): number {
+  const date = dateStringToUtcDate(dateString);
+  const weekdayName = new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+  }).format(date);
+  return WEEKDAY_INDEX[weekdayName];
+}
+
+/** 给 YYYY-MM-DD 字符串加/减天数，返回新的 YYYY-MM-DD。用 UTC 日期对象做加减，没有夏令时问题。 */
+export function addDays(dateString: string, days: number): string {
+  const date = dateStringToUtcDate(dateString);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatStoredDate(date);
+}
+
 /** 把 YYYY-MM-DD 转成 UTC 零点的 Date，用于写入 @db.Date 字段，避免本地时区偏移导致日期错位。 */
 export function dateStringToUtcDate(dateString: string): Date {
   return new Date(`${dateString}T00:00:00.000Z`);

@@ -2,7 +2,7 @@ import { getPrimaryChild } from "@/lib/child";
 import { formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 
-import { markCompleteAction, revokeAction } from "./actions";
+import { approveAction, rejectAction, revokeAction } from "./actions";
 
 export default async function HistoryPage() {
   const child = await getPrimaryChild();
@@ -28,9 +28,12 @@ export default async function HistoryPage() {
               <div>
                 <p className="text-sm text-slate-400">
                   {formatStoredDate(task.date)} · {task.source === "TEMPLATE" ? "周期任务" : "临时任务"}
+                  {task.status === "PENDING_REVIEW" && (
+                    <span className="ml-2 font-semibold text-amber-600">⏳ 待审核</span>
+                  )}
                 </p>
                 <p className="font-semibold">
-                  {task.emoji} {task.title}（{task.points} 分）
+                  {task.emoji} {task.title}（{task.points} 阳光）
                 </p>
               </div>
 
@@ -43,8 +46,27 @@ export default async function HistoryPage() {
                     撤销
                   </button>
                 </form>
+              ) : task.status === "PENDING_REVIEW" ? (
+                <div className="flex gap-2">
+                  <form action={approveAction.bind(null, task.id)}>
+                    <button
+                      type="submit"
+                      className="pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
+                    >
+                      批准
+                    </button>
+                  </form>
+                  <form action={rejectAction.bind(null, task.id)}>
+                    <button
+                      type="submit"
+                      className="pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
+                    >
+                      打回
+                    </button>
+                  </form>
+                </div>
               ) : (
-                <form action={markCompleteAction.bind(null, task.id)}>
+                <form action={approveAction.bind(null, task.id)}>
                   <button
                     type="submit"
                     className="pixel-btn bg-nes-green px-3 py-1 text-sm text-white"

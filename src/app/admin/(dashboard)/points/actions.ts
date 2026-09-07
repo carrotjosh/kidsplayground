@@ -16,7 +16,7 @@ export async function adjustPointsAction(
   const reason = String(formData.get("reason") ?? "").trim();
 
   if (!Number.isFinite(amount) || amount === 0 || !reason) {
-    return "请填写不为 0 的分值和原因";
+    return "请填写不为 0 的阳光值和原因";
   }
 
   const child = await getPrimaryChild();

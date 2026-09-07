@@ -37,7 +37,7 @@ export default async function TemplatesPage() {
             >
               <div>
                 <p className="font-semibold">
-                  {template.emoji} {template.title}（{template.points} 分）
+                  {template.emoji} {template.title}（{template.points} 阳光）
                 </p>
                 <p className="text-sm text-slate-500">{formatWeekdays(template.weekdays)}</p>
               </div>

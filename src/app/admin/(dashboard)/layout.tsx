@@ -12,8 +12,9 @@ const NAV_ITEMS = [
   { href: "/admin/templates", label: "任务模板" },
   { href: "/admin/adhoc", label: "临时任务" },
   { href: "/admin/history", label: "打卡记录" },
-  { href: "/admin/points", label: "积分" },
+  { href: "/admin/points", label: "阳光记录" },
   { href: "/admin/rewards", label: "礼物" },
+  { href: "/admin/plants", label: "植物目录" },
   { href: "/admin/redemptions", label: "兑换记录" },
 ];
 

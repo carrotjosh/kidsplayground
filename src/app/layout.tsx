@@ -18,7 +18,7 @@ const playfulFont = ZCOOL_KuaiLe({
 
 export const metadata: Metadata = {
   title: "打卡小星星",
-  description: "家庭学习打卡积分系统",
+  description: "家庭学习打卡阳光系统",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

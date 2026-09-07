@@ -16,7 +16,7 @@ export async function redeemReward(rewardId: string, childId: string) {
     });
     const balance = balanceResult._sum.amount ?? 0;
     if (balance < reward.cost) {
-      throw new ActionError("积分还不够哦");
+      throw new ActionError("阳光还不够哦");
     }
 
     const redemption = await tx.redemption.create({

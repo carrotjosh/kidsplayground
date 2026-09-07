@@ -17,11 +17,17 @@ model Child {
   slug      String   @unique
   createdAt DateTime @default(now())
 
+  // 花园夜间结算的游标：已经判定过僵尸攻击的最后一天。为空表示从没结算过。
+  // 懒结算函数从这个日期的次日开始，逐天判定到"昨天"为止（"今天"永远不判，因为还没过完）。
+  gardenSettledThrough DateTime? @db.Date
+
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
   ledgerEntries PointsLedger[]
   rewards       Reward[]
   redemptions   Redemption[]
+  plantTypes    PlantType[]
+  plants        Plant[]
 }
 
 enum TaskSource {
@@ -29,8 +35,13 @@ enum TaskSource {
   ADHOC
 }
 
+// PENDING：待完成
+// PENDING_REVIEW：孩子已点"完成"提交，等家长审核（不发阳光）
+// DONE：家长已批准（已发阳光），也可能是家长直接补打卡
+// CANCELLED：作废（当前流程未使用，保留原有语义）
 enum TaskStatus {
   PENDING
+  PENDING_REVIEW
   DONE
   CANCELLED
 }
@@ -40,11 +51,20 @@ enum LedgerType {
   REDEMPTION
   MANUAL_ADJUST
   TASK_REVOKE
+  PLANT_SEED // 种植物消耗的阳光；僵尸吃掉植物不产生流水，因为阳光在"种下"时已经扣过
 }
 
 enum RedemptionStatus {
   REQUESTED
   FULFILLED
+}
+
+// ALIVE：植物还活着 / EATEN：已被僵尸吃掉。
+// 不用 DB 唯一约束限制"同一格子同时只能有一条记录"，而是查询时用 status = ALIVE
+// 过滤出"当前占用中的格子"，这样格子被吃空后可以重新种，同时保留完整历史（同 DailyTask/Redemption 的做法）。
+enum PlantStatus {
+  ALIVE
+  EATEN
 }
 
 // 周期性任务模板，家长维护。
@@ -88,24 +108,25 @@ model DailyTask {
   @@index([childId, date])
 }
 
-// 积分流水：唯一的积分真相来源，当前余额 = 该表 amount 求和。
-// dailyTaskId 故意不设 @unique：同一条 DailyTask 完成->撤销->再次完成，会产生多条流水，
-// 这是"保留完整审计轨迹"的设计要求（见撤销打卡流程）。
+// 积分（阳光）流水：唯一的真相来源，当前余额 = 该表 amount 求和。
+// dailyTaskId 故意不设 @unique：同一条 DailyTask 完成->撤销->再次完成，会产生多条流水。
+// plantId 设 @unique：一条 Plant 记录只会在"种下"那一刻产生一条消耗流水，不会重复消费。
 model PointsLedger {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   childId      String
-  child        Child      @relation(fields: [childId], references: [id])
+  child        Child       @relation(fields: [childId], references: [id])
   amount       Int
   reason       String
   type         LedgerType
   dailyTaskId  String?
-  dailyTask    DailyTask? @relation(fields: [dailyTaskId], references: [id])
-  redemptionId String?    @unique
+  dailyTask    DailyTask?  @relation(fields: [dailyTaskId], references: [id])
+  redemptionId String?     @unique
   redemption   Redemption? @relation(fields: [redemptionId], references: [id])
-  createdAt    DateTime   @default(now())
+  plantId      String?     @unique
+  plant        Plant?      @relation(fields: [plantId], references: [id])
+  createdAt    DateTime    @default(now())
 
   @@index([dailyTaskId])
-
   @@index([childId, createdAt])
 }
 
@@ -141,4 +162,48 @@ model Redemption {
   ledgerEntry PointsLedger?
 
   @@index([childId, createdAt])
+}
+
+// 植物目录，家长维护，字段结构参照 Reward。
+model PlantType {
+  id        String   @id @default(cuid())
+  childId   String
+  child     Child    @relation(fields: [childId], references: [id])
+  title     String
+  emoji     String?
+  cost      Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  plants Plant[]
+
+  @@index([childId])
+}
+
+// 种下的植物实例。title/emoji 做了快照（同 DailyTask 的做法），避免以后修改植物目录
+// 影响历史展示。slot 是花园格子编号（0..GARDEN_SIZE-1，常量定义在 lib/garden.ts）。
+//
+// 不加 @@unique([childId, slot])：一株植物被僵尸吃掉后 status 变 EATEN，格子要能重新种上
+// 新的一株，同时保留完整历史——同一个 slot 编号上历史上会有多条 Plant 记录（若干条 EATEN +
+// 最多一条当前 ALIVE）。"这个格子现在是不是空的"永远在查询时用 where: { status: ALIVE }
+// 过滤得到"当前占用的格子集合"来判断，而不是靠数据库约束。
+model Plant {
+  id          String      @id @default(cuid())
+  childId     String
+  child       Child       @relation(fields: [childId], references: [id])
+  plantTypeId String
+  plantType   PlantType   @relation(fields: [plantTypeId], references: [id])
+  title       String
+  emoji       String?
+  slot        Int
+  status      PlantStatus @default(ALIVE)
+  plantedAt   DateTime    @default(now())
+  eatenAt     DateTime?
+  eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示
+  createdAt   DateTime    @default(now())
+
+  ledgerEntry PointsLedger?
+
+  @@index([childId, status])
+  @@index([childId, slot])
 }
