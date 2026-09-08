@@ -135,7 +135,10 @@ export async function setSessionCookie(session: Session): Promise<void> {
   const store = await cookies();
   store.set(SESSION_COOKIE, createSessionToken(session), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // secure 的 Cookie 只在 HTTPS 下会被浏览器回传。公网部署一定要开，
+    // 但局域网部署走的是 http://192.168.x.x，开了就永远登录不上——
+    // 所以留一个 ALLOW_INSECURE_COOKIES=1 的开关给局域网场景。
+    secure: process.env.NODE_ENV === "production" && process.env.ALLOW_INSECURE_COOKIES !== "1",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
