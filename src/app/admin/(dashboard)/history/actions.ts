@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireParentSession } from "@/lib/auth";
+import { setDailyGoalPoints } from "@/lib/calendar";
 import { getPrimaryChild } from "@/lib/child";
 import { approveDailyTask, rejectDailyTaskReview, revokeDailyTaskCompletion } from "@/lib/tasks";
 
@@ -33,4 +34,21 @@ export async function rejectAction(taskId: string) {
   const child = await getPrimaryChild();
   await rejectDailyTaskReview(taskId, child.id);
   revalidateHistoryPaths();
+}
+
+export async function setDailyGoalAction(
+  _prevState: string | null,
+  formData: FormData
+): Promise<string | null> {
+  await requireParentSession();
+
+  const points = Number(formData.get("points"));
+  if (!Number.isInteger(points) || points <= 0) {
+    return "请填写一个大于 0 的整数";
+  }
+
+  const child = await getPrimaryChild();
+  await setDailyGoalPoints(child.id, points);
+  revalidateHistoryPaths();
+  return null;
 }

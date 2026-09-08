@@ -52,7 +52,7 @@ export default async function RewardsPage({
               >
                 <span className="text-5xl lg:text-6xl">{reward.emoji ?? "🎁"}</span>
                 <p className="text-lg font-bold text-slate-800 lg:text-xl">{reward.title}</p>
-                <p className="pixel-font text-[10px] text-nes-brown lg:text-xs">{reward.cost} 阳光</p>
+                <p className="pixel-font text-[10px] text-nes-brown lg:text-xs">{reward.cost} ☀️</p>
                 <RedeemButton
                   redeemAction={redeemRewardAction.bind(null, slug, reward.id)}
                   disabled={!enough}

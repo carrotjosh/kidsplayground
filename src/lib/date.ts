@@ -64,3 +64,39 @@ export function todayAsUtcDate(now: Date = new Date()): Date {
 export function formatStoredDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
+
+// ---------- 月份相关（日历视图 / 月度满勤奖用）----------
+
+/** 按中国时区返回"这个月"，格式 YYYY-MM。 */
+export function currentMonthString(now: Date = new Date()): string {
+  return todayDateString(now).slice(0, 7);
+}
+
+/** YYYY-MM 是否是合法月份字符串。 */
+export function isValidMonthString(month: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+}
+
+/** 给 YYYY-MM 加/减月份，返回新的 YYYY-MM。 */
+export function addMonths(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** 某个月有多少天。 */
+export function daysInMonth(month: string): number {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/** 某个月 1 号是星期几（0=周日...6=周六），用于日历首行左侧留空。 */
+export function firstWeekdayOfMonth(month: string): number {
+  return weekdayOfDateString(`${month}-01`);
+}
+
+/** 列出某个月的全部日期字符串：["2026-09-01", ..., "2026-09-30"]。 */
+export function datesInMonth(month: string): string[] {
+  const total = daysInMonth(month);
+  return Array.from({ length: total }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+}

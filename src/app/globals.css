@@ -132,6 +132,13 @@ body {
   animation: bounce-slow 1.6s ease-in-out infinite;
 }
 
+/* 和 .animate-bounce-slow 搭配用：让相邻的两个按钮错开半个周期，一上一下交替跳。
+   写成复合选择器（而不是靠 Tailwind 的 [animation-delay:...]）是因为上面那条用了
+   animation 简写，简写会把 animation-delay 一并重置为 0，单类选择器压不住它。 */
+.animate-bounce-slow.animate-delay-half {
+  animation-delay: -0.8s;
+}
+
 .animate-pop-in {
   animation: pop-in 0.35s ease-out;
 }

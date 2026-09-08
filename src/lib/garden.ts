@@ -1,7 +1,13 @@
 import { LedgerType, PlantStatus, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
-import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "@/lib/date";
+import {
+  addDays,
+  dateStringToUtcDate,
+  formatStoredDate,
+  todayAsUtcDate,
+  todayDateString,
+} from "@/lib/date";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
 
 /**
@@ -59,7 +65,17 @@ export async function settleGardenForChild(childId: string): Promise<GardenEvent
         },
       });
 
-      const isSafe = dayTasks.length === 0 || dayTasks.every((t) => t.status === TaskStatus.DONE);
+      // 当天种过植物就免疫僵尸——新种下的那棵挡住了这一晚。
+      // 注意花园只有 GARDEN_SIZE 个格子、种满就不能再种，所以这张"免死金牌"天然有上限，
+      // 孩子没法靠每天买一棵便宜植物无限逃避任务。
+      const plantedToday = await tx.plant.count({
+        where: { childId, plantedOnDate: dateStringToUtcDate(cursor) },
+      });
+
+      const isSafe =
+        plantedToday > 0 ||
+        dayTasks.length === 0 ||
+        dayTasks.every((t) => t.status === TaskStatus.DONE);
 
       if (!isSafe) {
         const alivePlants = await tx.plant.findMany({
@@ -148,6 +164,7 @@ export async function plantSeed(plantTypeId: string, childId: string) {
         emoji: plantType.emoji,
         slot: freeSlot,
         status: PlantStatus.ALIVE,
+        plantedOnDate: todayAsUtcDate(),
       },
     });
 

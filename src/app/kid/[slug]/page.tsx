@@ -63,18 +63,28 @@ export default async function KidHomePage({
         )}
       </section>
 
-      <div className="mt-4 flex gap-3">
+      <div className="mt-4 flex flex-col gap-3">
+        <div className="flex gap-3">
+          {/* animate-delay-half 让花园按钮比礼物按钮晚半个周期，两个按钮一上一下交替跳，
+              比同步跳更有节奏感。 */}
+          <Link
+            href={`/kid/${slug}/garden`}
+            className="pixel-btn animate-bounce-slow animate-delay-half flex flex-1 items-center justify-center gap-2 bg-nes-green px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
+          >
+            🌻 我的花园
+          </Link>
+          <Link
+            href={`/kid/${slug}/rewards`}
+            className="pixel-btn animate-bounce-slow flex flex-1 items-center justify-center gap-2 bg-nes-pink px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
+          >
+            🎁 礼物橱窗
+          </Link>
+        </div>
         <Link
-          href={`/kid/${slug}/garden`}
-          className="pixel-btn flex flex-1 items-center justify-center gap-2 bg-nes-green px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
+          href={`/kid/${slug}/calendar`}
+          className="pixel-btn flex items-center justify-center gap-2 bg-nes-yellow px-6 py-4 text-xl font-bold text-nes-black lg:py-5 lg:text-2xl"
         >
-          🌻 我的花园
-        </Link>
-        <Link
-          href={`/kid/${slug}/rewards`}
-          className="pixel-btn animate-bounce-slow flex flex-1 items-center justify-center gap-2 bg-nes-pink px-6 py-4 text-xl font-bold text-white lg:py-6 lg:text-2xl"
-        >
-          🎁 礼物橱窗
+          📅 我的日历
         </Link>
       </div>
     </main>

@@ -23,8 +23,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // suppressHydrationWarning：浏览器翻译类插件（如 Trancy）会往 <html> 上注入自己的属性，
+    // 导致服务端渲染结果和客户端对不上、开发模式下报 hydration 警告。这个属性只影响这一层元素，
+    // 不会掩盖子组件里真正的 hydration 问题。
     <html
       lang="zh-CN"
+      suppressHydrationWarning
       className={`${pixelFont.variable} ${playfulFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

@@ -21,6 +21,12 @@ model Child {
   // 懒结算函数从这个日期的次日开始，逐天判定到"昨天"为止（"今天"永远不判，因为还没过完）。
   gardenSettledThrough DateTime? @db.Date
 
+  // 每日达标线：当天已批准的任务加起来达到这么多阳光，这一天就算"打卡成功"（日历上点亮、计入满勤）。
+  dailyGoalPoints Int @default(10)
+
+  // 月度满勤奖结算游标：已经结算过奖励的最后一个月（存该月 1 号）。为空表示从没结算过。
+  bonusSettledThrough DateTime? @db.Date
+
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
   ledgerEntries PointsLedger[]
@@ -52,6 +58,7 @@ enum LedgerType {
   MANUAL_ADJUST
   TASK_REVOKE
   PLANT_SEED // 种植物消耗的阳光；僵尸吃掉植物不产生流水，因为阳光在"种下"时已经扣过
+  MONTHLY_BONUS // 月度满勤奖励
 }
 
 enum RedemptionStatus {
@@ -198,6 +205,9 @@ model Plant {
   slot        Int
   status      PlantStatus @default(ALIVE)
   plantedAt   DateTime    @default(now())
+  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，是因为
+  // 夜间结算要按天判断"这天有没有种过植物"（种了就免疫僵尸），直接比日期列最省事也最不容易错。
+  plantedOnDate DateTime? @db.Date
   eatenAt     DateTime?
   eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示
   createdAt   DateTime    @default(now())
@@ -206,4 +216,5 @@ model Plant {
 
   @@index([childId, status])
   @@index([childId, slot])
+  @@index([childId, plantedOnDate])
 }

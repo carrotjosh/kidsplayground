@@ -10,6 +10,7 @@ const TYPE_LABELS: Record<string, string> = {
   MANUAL_ADJUST: "手动调整",
   TASK_REVOKE: "撤销打卡",
   PLANT_SEED: "种植物",
+  MONTHLY_BONUS: "月度满勤奖",
 };
 
 export default async function PointsPage() {

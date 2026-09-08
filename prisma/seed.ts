@@ -4,11 +4,11 @@ import { prisma } from "../src/lib/db";
 
 async function main() {
   const child = await prisma.child.upsert({
-    where: { slug: "doudou-demo" },
-    update: {},
+    where: { slug: "pengpeng-demo" },
+    update: { name: "蓬蓬" },
     create: {
-      name: "豆豆",
-      slug: "doudou-demo",
+      name: "蓬蓬",
+      slug: "pengpeng-demo",
     },
   });
 

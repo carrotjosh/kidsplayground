@@ -84,7 +84,7 @@ export default async function GardenPage({
                 >
                   <span className="text-5xl">{pt.emoji ?? "🌱"}</span>
                   <p className="text-lg font-bold text-slate-800">{pt.title}</p>
-                  <p className="pixel-font text-[10px] text-nes-brown">{pt.cost} 阳光</p>
+                  <p className="pixel-font text-[10px] text-nes-brown">{pt.cost} ☀️</p>
                   <PlantButton
                     plantAction={plantSeedAction.bind(null, slug, pt.id)}
                     disabled={!enough || isFull}
