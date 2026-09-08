@@ -175,7 +175,7 @@ model PointsLedger {
   @@index([childId, createdAt])
 }
 
-// 礼物清单，家长维护，不做库存管理。
+// 礼物清单，家长维护，不做库存管理，但可以限制兑换频率。
 model Reward {
   id        String   @id @default(cuid())
   childId   String
@@ -183,6 +183,9 @@ model Reward {
   title     String
   emoji     String?
   cost      Int
+  // 兑换冷却：距上次兑换要间隔多少天才能再换。null = 不限次数。
+  // 用"滚动天数"而不是自然周/月，规则对孩子更直观：上次换完就开始倒计时。
+  cooldownDays Int?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -196,8 +199,10 @@ model Redemption {
   id          String           @id @default(cuid())
   childId     String
   child       Child            @relation(fields: [childId], references: [id])
-  rewardId    String
-  reward      Reward           @relation(fields: [rewardId], references: [id])
+  // 可空 + SetNull：家长删除礼物时，历史兑换记录要保留（名称和价格都有快照），
+  // 只是断开和礼物的关联，不能因为删礼物把孩子的兑换历史一起删掉。
+  rewardId    String?
+  reward      Reward?          @relation(fields: [rewardId], references: [id], onDelete: SetNull)
   rewardTitle String
   cost        Int
   status      RedemptionStatus @default(REQUESTED)

@@ -1,8 +1,8 @@
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
 
-import { toggleRewardActiveAction } from "./actions";
 import { RewardForm } from "./RewardForm";
+import { RewardRow } from "./RewardRow";
 
 export default async function RewardsAdminPage() {
   const child = await getPrimaryChild();
@@ -22,26 +22,17 @@ export default async function RewardsAdminPage() {
           <p className="text-slate-500">还没有礼物。</p>
         ) : (
           rewards.map((reward) => (
-            <div
+            <RewardRow
               key={reward.id}
-              className="flex items-center justify-between pixel-card bg-white p-4"
-            >
-              <p className="font-semibold">
-                {reward.emoji} {reward.title}（{reward.cost} 阳光）
-              </p>
-              <form action={toggleRewardActiveAction.bind(null, reward.id, !reward.active)}>
-                <button
-                  type="submit"
-                  className={
-                    reward.active
-                      ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
-                      : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
-                  }
-                >
-                  {reward.active ? "下架" : "上架"}
-                </button>
-              </form>
-            </div>
+              reward={{
+                id: reward.id,
+                title: reward.title,
+                cost: reward.cost,
+                emoji: reward.emoji,
+                cooldownDays: reward.cooldownDays,
+                active: reward.active,
+              }}
+            />
           ))
         )}
       </div>

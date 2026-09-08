@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { getPointsBalance } from "@/lib/points";
+import { formatCooldown, getCooldownStates } from "@/lib/rewards";
 
 import { redeemRewardAction } from "../actions";
 import { RedeemButton } from "./RedeemButton";
@@ -27,6 +29,8 @@ export default async function RewardsPage({
     }),
     getPointsBalance(child.id),
   ]);
+  // 冷却状态一次批量查完，不要每个礼物查一次
+  const cooldowns = await getCooldownStates(child.id, rewards);
 
   return (
     <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
@@ -45,18 +49,33 @@ export default async function RewardsPage({
         ) : (
           rewards.map((reward) => {
             const enough = balance >= reward.cost;
+            const cooling = cooldowns.get(reward.id);
+            const onCooldown = cooling ? !cooling.available : false;
+
+            // 冷却优先于阳光不够：换不了的首要原因先告诉孩子
+            const label = onCooldown
+              ? `还要等 ${cooling!.daysLeft} 天`
+              : enough
+                ? "我要兑换 🎉"
+                : `还差 ${reward.cost - balance} 阳光`;
+
             return (
               <div
                 key={reward.id}
                 className="pixel-card flex flex-col items-center gap-2 bg-white p-5 text-center lg:p-7"
               >
                 <span className="text-5xl lg:text-6xl">{reward.emoji ?? "🎁"}</span>
-                <p className="text-lg font-bold text-slate-800 lg:text-xl">{reward.title}</p>
+                <p className="kid-text text-lg text-slate-800 lg:text-xl">
+                  <Pinyin text={reward.title} />
+                </p>
                 <p className="pixel-font text-[10px] text-nes-brown lg:text-xs">{reward.cost} ☀️</p>
+                {reward.cooldownDays && (
+                  <p className="text-xs text-slate-400">{formatCooldown(reward.cooldownDays)}</p>
+                )}
                 <RedeemButton
                   redeemAction={redeemRewardAction.bind(null, slug, reward.id)}
-                  disabled={!enough}
-                  label={enough ? "我要兑换 🎉" : `还差 ${reward.cost - balance} 阳光`}
+                  disabled={!enough || onCooldown}
+                  label={label}
                 />
               </div>
             );
