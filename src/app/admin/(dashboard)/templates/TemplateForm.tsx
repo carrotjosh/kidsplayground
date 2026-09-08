@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { EmojiPicker, TASK_EMOJI_GROUPS } from "@/components/EmojiPicker";
+
 import { createTemplateAction } from "./actions";
 
 const WEEKDAYS = [
@@ -21,28 +23,24 @@ export function TemplateForm() {
     <form action={formAction} className="flex flex-col gap-3 pixel-card bg-white p-5">
       <h2 className="font-semibold">新增周期性任务</h2>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <input
           name="title"
           placeholder="任务名称，比如：读书20分钟"
           required
-          className="flex-1 rounded-none border-2 border-nes-black px-3 py-2"
-        />
-        <input
-          name="emoji"
-          placeholder="emoji，比如 📖"
-          maxLength={4}
-          className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
+          className="min-w-48 flex-1 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="points"
           type="number"
           min={1}
-          placeholder="分值"
+          placeholder="阳光"
           required
           className="w-24 rounded-none border-2 border-nes-black px-3 py-2"
         />
       </div>
+
+      <EmojiPicker name="emoji" groups={TASK_EMOJI_GROUPS} />
 
       <div className="flex flex-wrap gap-3 text-sm">
         {WEEKDAYS.map((day) => (

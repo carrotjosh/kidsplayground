@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { EmojiPicker, REWARD_EMOJI_GROUPS } from "@/components/EmojiPicker";
+
 import { createRewardAction } from "./actions";
 
 export function RewardForm() {
@@ -15,13 +17,7 @@ export function RewardForm() {
           name="title"
           placeholder="礼物名称，比如：乐高小汽车"
           required
-          className="flex-1 rounded-none border-2 border-nes-black px-3 py-2"
-        />
-        <input
-          name="emoji"
-          placeholder="emoji，比如 🚗"
-          maxLength={4}
-          className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
+          className="min-w-48 flex-1 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="cost"
@@ -32,6 +28,9 @@ export function RewardForm() {
           className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
         />
       </div>
+
+      <EmojiPicker name="emoji" groups={REWARD_EMOJI_GROUPS} />
+
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button
         type="submit"

@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { MonthCalendar, MonthProgress } from "@/components/MonthCalendar";
 import { RedemptionStatus, TaskStatus } from "@/generated/prisma/client";
+import { getMonthSummary, settleMonthlyBonusForChild } from "@/lib/calendar";
 import { getPrimaryChild } from "@/lib/child";
-import { formatStoredDate } from "@/lib/date";
+import { currentMonthString, formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
@@ -12,7 +14,10 @@ import { approveAction, rejectAction } from "./history/actions";
 export default async function AdminDashboardPage() {
   const child = await getPrimaryChild();
 
-  const [tasks, balance, pendingRedemptions, pendingReviewTasks] = await Promise.all([
+  // 顺手结算月度满勤奖（幂等，重复调用不会重复发）。
+  await settleMonthlyBonusForChild(child.id);
+
+  const [tasks, balance, pendingRedemptions, pendingReviewTasks, summary] = await Promise.all([
     getOrCreateTodayTasks(child.id),
     getPointsBalance(child.id),
     prisma.redemption.count({
@@ -22,6 +27,7 @@ export default async function AdminDashboardPage() {
       where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
     }),
+    getMonthSummary(child.id, currentMonthString()),
   ]);
 
   const doneCount = tasks.filter((t) => t.status === "DONE").length;
@@ -80,6 +86,18 @@ export default async function AdminDashboardPage() {
           </ul>
         </div>
       )}
+
+      {/* 仪表盘只看当月、不带翻月按钮，保持"扫一眼"的定位；要翻历史月份去打卡记录页。 */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="font-semibold">本月打卡日历</h2>
+          <Link href="/admin/history" className="text-sm text-slate-500 hover:text-slate-800">
+            查看完整记录 →
+          </Link>
+        </div>
+        <MonthProgress summary={summary} />
+        <MonthCalendar summary={summary} basePath={null} />
+      </div>
 
       <div className="pixel-card bg-white p-5">
         <h2 className="mb-3 font-semibold">今日任务清单</h2>

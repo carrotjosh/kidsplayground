@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { EmojiPicker, PLANT_EMOJI_GROUPS } from "@/components/EmojiPicker";
+
 import { createPlantTypeAction } from "./actions";
 
 export function PlantTypeForm() {
@@ -15,13 +17,7 @@ export function PlantTypeForm() {
           name="title"
           placeholder="植物名称，比如：向日葵"
           required
-          className="flex-1 rounded-none border-2 border-nes-black px-3 py-2"
-        />
-        <input
-          name="emoji"
-          placeholder="emoji，比如 🌻"
-          maxLength={4}
-          className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
+          className="min-w-48 flex-1 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="cost"
@@ -32,6 +28,9 @@ export function PlantTypeForm() {
           className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
         />
       </div>
+
+      <EmojiPicker name="emoji" groups={PLANT_EMOJI_GROUPS} />
+
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button
         type="submit"

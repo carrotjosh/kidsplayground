@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { EmojiPicker, TASK_EMOJI_GROUPS } from "@/components/EmojiPicker";
+
 import { createAdhocAction } from "./actions";
 
 export function AdhocForm({ defaultDate }: { defaultDate: string }) {
@@ -15,19 +17,13 @@ export function AdhocForm({ defaultDate }: { defaultDate: string }) {
           name="title"
           placeholder="任务名称，比如：默写生字"
           required
-          className="flex-1 rounded-none border-2 border-nes-black px-3 py-2"
-        />
-        <input
-          name="emoji"
-          placeholder="emoji"
-          maxLength={4}
-          className="w-24 rounded-none border-2 border-nes-black px-3 py-2"
+          className="min-w-48 flex-1 rounded-none border-2 border-nes-black px-3 py-2"
         />
         <input
           name="points"
           type="number"
           min={1}
-          placeholder="分值"
+          placeholder="阳光"
           required
           className="w-24 rounded-none border-2 border-nes-black px-3 py-2"
         />
@@ -38,6 +34,9 @@ export function AdhocForm({ defaultDate }: { defaultDate: string }) {
           className="rounded-none border-2 border-nes-black px-3 py-2"
         />
       </div>
+
+      <EmojiPicker name="emoji" groups={TASK_EMOJI_GROUPS} />
+
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button
         type="submit"

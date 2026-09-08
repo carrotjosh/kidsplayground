@@ -8,14 +8,15 @@ const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 /**
  * 月历视图。每一格显示当天赚到的阳光：
  *   达标（≥ 每日达标线）→ 绿色；有任务但没达标 → 黄色；完全没打卡 → 灰色。
- * basePath 用来生成上/下个月的链接（月份通过 ?month= 查询参数传递）。
+ * basePath 用来生成上/下个月的链接（月份通过 ?month= 查询参数传递）；
+ * 仪表盘那种"只看当月"的场景传 basePath={null} 就不渲染翻月按钮。
  */
 export function MonthCalendar({
   summary,
   basePath,
 }: {
   summary: MonthSummary;
-  basePath: string;
+  basePath: string | null;
 }) {
   const { month, days, dailyGoalPoints } = summary;
   const leadingBlanks = firstWeekdayOfMonth(month);
@@ -24,21 +25,29 @@ export function MonthCalendar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <Link
-          href={`${basePath}?month=${addMonths(month, -1)}`}
-          className="pixel-btn bg-white px-3 py-2 text-sm font-bold text-slate-700"
-        >
-          ← 上月
-        </Link>
+        {basePath ? (
+          <Link
+            href={`${basePath}?month=${addMonths(month, -1)}`}
+            className="pixel-btn bg-white px-3 py-2 text-sm font-bold text-slate-700"
+          >
+            ← 上月
+          </Link>
+        ) : (
+          <span />
+        )}
         <p className="text-lg font-bold text-slate-800">
           {year} 年 {Number(monthNum)} 月
         </p>
-        <Link
-          href={`${basePath}?month=${addMonths(month, 1)}`}
-          className="pixel-btn bg-white px-3 py-2 text-sm font-bold text-slate-700"
-        >
-          下月 →
-        </Link>
+        {basePath ? (
+          <Link
+            href={`${basePath}?month=${addMonths(month, 1)}`}
+            className="pixel-btn bg-white px-3 py-2 text-sm font-bold text-slate-700"
+          >
+            下月 →
+          </Link>
+        ) : (
+          <span />
+        )}
       </div>
 
       <div className="pixel-card bg-white p-3 lg:p-5">
