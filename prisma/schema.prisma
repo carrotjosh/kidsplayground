@@ -10,12 +10,28 @@ datasource db {
   provider = "postgresql"
 }
 
+// 家长账号。当前只会有一个（注册入口在建号后自动关闭），
+// 但 Child 挂在 User 下面，以后要开放多用户注册不需要重构数据模型。
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  children Child[]
+}
+
 // 孩子档案。第一版只会有一条记录，但为未来多个孩子的场景预留了外键结构。
 model Child {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())
+
+  // 可空只是为了让"建账号之前就已经存在的孩子"能平滑接管；
+  // 建完第一个账号后会自动认领，正常流程里都有值。
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   // 花园夜间结算的游标：已经判定过僵尸攻击的最后一天。为空表示从没结算过。
   // 懒结算函数从这个日期的次日开始，逐天判定到"昨天"为止（"今天"永远不判，因为还没过完）。
@@ -34,6 +50,8 @@ model Child {
   redemptions   Redemption[]
   plantTypes    PlantType[]
   plants        Plant[]
+
+  @@index([userId])
 }
 
 enum TaskSource {

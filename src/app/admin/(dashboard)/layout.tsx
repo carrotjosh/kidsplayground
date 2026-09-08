@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { logoutAction } from "./actions";
+import { logoutAction } from "@/app/login/actions";
 
 // 家长后台每一页都要读最新数据（今日任务、积分、兑换申请……），
 // 不能被 next build 当成静态页面预渲染，否则构建时会拿不到真实数据库连接而报错。

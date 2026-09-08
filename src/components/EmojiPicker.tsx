@@ -2,11 +2,41 @@
 
 import { useState } from "react";
 
-/** 任务用的预设 emoji，按学习/运动/生活习惯/兴趣爱好分组。 */
-export const TASK_EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+/**
+ * emoji 条目：大多数一眼能认出来，少数容易认错的加个名字，
+ * 鼠标悬停能看到（触屏设备靠分组名区分）。
+ */
+export type EmojiItem = string | { emoji: string; label: string };
+
+export type EmojiGroup = { label: string; emojis: EmojiItem[] };
+
+export function emojiOf(item: EmojiItem): string {
+  return typeof item === "string" ? item : item.emoji;
+}
+
+export function labelOf(item: EmojiItem): string | undefined {
+  return typeof item === "string" ? undefined : item.label;
+}
+
+/** 任务用的预设 emoji，按学习 App/学习/运动/生活习惯/兴趣爱好分组。 */
+export const TASK_EMOJI_GROUPS: EmojiGroup[] = [
+  {
+    label: "学习 App",
+    emojis: [
+      // Unicode 没有多邻国官方图标，绿猫头鹰是它的吉祥物，最贴近
+      { emoji: "🦉", label: "多邻国（猫头鹰）" },
+      { emoji: "🟢", label: "多邻国（绿色）" },
+      { emoji: "🗣️", label: "口语/跟读" },
+      { emoji: "🎧", label: "听力" },
+      { emoji: "📱", label: "App 打卡" },
+      { emoji: "🔤", label: "英语单词" },
+      { emoji: "🈶", label: "语文" },
+      { emoji: "🧮", label: "数学/口算" },
+    ],
+  },
   {
     label: "学习",
-    emojis: ["📖", "📚", "✏️", "📝", "🧮", "🔤", "🔢", "🖊️", "📐", "🗂️", "🧠", "🔬", "🌏", "🧪", "💻", "🦉"],
+    emojis: ["📖", "📚", "✏️", "📝", "🔢", "🖊️", "📐", "🗂️", "🧠", "🔬", "🌏", "🧪", "💻", "📔"],
   },
   {
     label: "运动",
@@ -23,7 +53,7 @@ export const TASK_EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
 ];
 
 /** 礼物用的预设 emoji。 */
-export const REWARD_EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+export const REWARD_EMOJI_GROUPS: EmojiGroup[] = [
   {
     label: "玩乐",
     emojis: ["🎁", "🧸", "🚗", "🪁", "🎠", "🎡", "🎢", "🏖️", "🎪", "🎮", "🧩", "⚽", "🛴", "🪆", "🚂", "🦖"],
@@ -39,7 +69,7 @@ export const REWARD_EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
 ];
 
 /** 植物用的预设 emoji。 */
-export const PLANT_EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+export const PLANT_EMOJI_GROUPS: EmojiGroup[] = [
   {
     label: "植物",
     emojis: ["🌻", "🌱", "🌵", "🌿", "🍀", "🌳", "🌲", "🌴", "🪴", "🌷", "🌸", "🌺", "🌹", "🍄", "🎋", "🌾"],
@@ -61,7 +91,7 @@ export function EmojiPicker({
   label = "图标",
 }: {
   name: string;
-  groups: { label: string; emojis: string[] }[];
+  groups: EmojiGroup[];
   defaultValue?: string;
   label?: string;
 }) {
@@ -99,23 +129,33 @@ export function EmojiPicker({
             <div key={group.label} className="flex flex-col gap-1">
               <p className="text-xs font-bold text-slate-500">{group.label}</p>
               <div className="flex flex-wrap gap-1">
-                {group.emojis.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => {
-                      setValue(emoji);
-                      setOpen(false);
-                    }}
-                    className={`flex h-10 w-10 items-center justify-center border-2 text-xl transition ${
-                      value === emoji
-                        ? "border-nes-black bg-nes-yellow"
-                        : "border-slate-200 bg-white hover:border-nes-black"
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
+                {group.emojis.map((item) => {
+                  const emoji = emojiOf(item);
+                  const name = labelOf(item);
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      title={name}
+                      onClick={() => {
+                        setValue(emoji);
+                        setOpen(false);
+                      }}
+                      className={`flex h-10 min-w-10 flex-col items-center justify-center border-2 px-1 transition ${
+                        value === emoji
+                          ? "border-nes-black bg-nes-yellow"
+                          : "border-slate-200 bg-white hover:border-nes-black"
+                      }`}
+                    >
+                      <span className="text-xl leading-none">{emoji}</span>
+                      {name && (
+                        <span className="mt-0.5 text-[8px] leading-none text-slate-500">
+                          {name.replace(/（.*）/, "")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
