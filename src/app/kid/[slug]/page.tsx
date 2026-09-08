@@ -47,12 +47,12 @@ export default async function KidHomePage({
   const child = await getChildBySlug(slug);
   if (!child) notFound();
 
-  await settleMonthlyBonusForChild(child.id);
+  await settleMonthlyBonusForChild(child);
 
   const [tasks, balance, summary] = await Promise.all([
     getOrCreateTodayTasks(child.id),
     getPointsBalance(child.id),
-    getMonthSummary(child.id, month),
+    getMonthSummary(child, month),
   ]);
   const today = todayDateString();
 

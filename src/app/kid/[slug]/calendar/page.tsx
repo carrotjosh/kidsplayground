@@ -25,10 +25,10 @@ export default async function KidCalendarPage({
   if (!child) notFound();
 
   // 顺手结算月度满勤奖（幂等），孩子打开日历就能看到奖励到账。
-  await settleMonthlyBonusForChild(child.id);
+  await settleMonthlyBonusForChild(child);
 
   const [summary, balance] = await Promise.all([
-    getMonthSummary(child.id, month),
+    getMonthSummary(child, month),
     getPointsBalance(child.id),
   ]);
 

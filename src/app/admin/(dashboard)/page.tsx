@@ -16,7 +16,7 @@ export default async function AdminDashboardPage() {
   const child = await getPrimaryChild();
 
   // 顺手结算月度满勤奖（幂等，重复调用不会重复发）。
-  await settleMonthlyBonusForChild(child.id);
+  await settleMonthlyBonusForChild(child);
 
   const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend] = await Promise.all([
     getOrCreateTodayTasks(child.id),

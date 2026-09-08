@@ -44,11 +44,15 @@ export type MonthSummary = {
 /**
  * 汇总某个月的日历数据。"当天赚了多少阳光"按 DailyTask.date 归集（而不是按流水的创建时间），
  * 这样家长隔天补批准，那笔阳光仍然算在任务本来所属的那一天上，日历不会错位。
+ *
+ * 参数收 child 对象而不是 childId：调用方（页面）本来就已经查过一次孩子了，
+ * 这里再查一次就是一次多余的数据库往返——数据库在境外时一次往返要 200ms+，能省则省。
  */
-export async function getMonthSummary(childId: string, month: string): Promise<MonthSummary> {
-  const child = await prisma.child.findUnique({ where: { id: childId } });
-  if (!child) throw new ActionError("找不到这个孩子");
-
+export async function getMonthSummary(
+  child: { id: string; dailyGoalPoints: number },
+  month: string
+): Promise<MonthSummary> {
+  const childId = child.id;
   const dates = datesInMonth(month);
   const monthStart = dateStringToUtcDate(dates[0]);
   const monthEnd = dateStringToUtcDate(dates[dates.length - 1]);
@@ -130,18 +134,34 @@ export async function getMonthSummary(childId: string, month: string): Promise<M
  * 的比例 ≥ 95%。整个月一个任务都没排的月份直接跳过，不发奖也不算失败。
  *
  * 和花园结算一样是幂等的：游标在事务里推进，重复调用不会重复发奖。可以放心在多个页面调用。
+ *
+ * 参数收 child 对象：调用方已经查过孩子了，直接用它身上的游标先判断有没有要结算的月份。
+ * 绝大多数时候（一个月里的其它 30 天）都没有，就能整个跳过下面这个事务——
+ * 省掉 4 次数据库往返，这在数据库离用户很远的时候是每次打开页面都要付的成本。
  */
-export async function settleMonthlyBonusForChild(childId: string): Promise<string[]> {
+export async function settleMonthlyBonusForChild(child: {
+  id: string;
+  bonusSettledThrough: Date | null;
+}): Promise<string[]> {
   const currentMonth = currentMonthString();
+  const childId = child.id;
+
+  const pendingFrom = child.bonusSettledThrough
+    ? addMonths(formatStoredDate(child.bonusSettledThrough).slice(0, 7), 1)
+    : currentMonth;
+  if (pendingFrom >= currentMonth) {
+    return []; // 没有待结算的完整月份，不用开事务
+  }
 
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
 
-    const child = await tx.child.findUnique({ where: { id: childId } });
-    if (!child) throw new ActionError("找不到这个孩子");
+    // 锁之后重新读一次：可能有并发请求刚刚结算过并推进了游标。
+    const locked = await tx.child.findUnique({ where: { id: childId } });
+    if (!locked) throw new ActionError("找不到这个孩子");
 
-    let cursor = child.bonusSettledThrough
-      ? addMonths(formatStoredDate(child.bonusSettledThrough).slice(0, 7), 1)
+    let cursor = locked.bonusSettledThrough
+      ? addMonths(formatStoredDate(locked.bonusSettledThrough).slice(0, 7), 1)
       : currentMonth;
 
     const awardedMonths: string[] = [];
@@ -172,8 +192,9 @@ export async function settleMonthlyBonusForChild(childId: string): Promise<strin
       }
 
       const taskDays = taskDates.size;
+      // 用锁内重新读到的 locked，拿的是最新的达标线
       const reachedDays = [...taskDates].filter(
-        (d) => (earnedByDate.get(d) ?? 0) >= child.dailyGoalPoints
+        (d) => (earnedByDate.get(d) ?? 0) >= locked.dailyGoalPoints
       ).length;
 
       if (taskDays > 0 && reachedDays >= Math.ceil(taskDays * MONTHLY_BONUS_RATIO)) {

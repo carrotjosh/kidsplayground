@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ScheduleType } from "@/generated/prisma/client";
+import { ScheduleType, TaskStatus } from "@/generated/prisma/client";
 import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
+import { todayAsUtcDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { parseTaskFields } from "@/lib/taskName";
 
@@ -56,6 +57,66 @@ export async function createTemplateAction(
   });
 
   revalidatePath("/admin/templates");
+  return null;
+}
+
+/**
+ * 编辑已有模板。除了改模板本身，还会把"今天已经生成、但孩子还没提交"的那条任务
+ * 一起同步过去——家长改错别字或调分值时，期望的是今天就生效，而不是等明天。
+ * 已提交待审核 / 已批准 / 历史日期的任务都不动，保持快照语义、不影响已发的阳光。
+ */
+export async function updateTemplateAction(
+  templateId: string,
+  _prevState: string | null,
+  formData: FormData
+): Promise<string | null> {
+  await requireParentSession();
+
+  const parsed = parseTaskFields(formData);
+  if (!parsed.ok) return parsed.error;
+
+  const emoji = String(formData.get("emoji") ?? "").trim() || null;
+  const points = Number(formData.get("points"));
+  const scheduleType = parseScheduleType(formData);
+  const weekdays = scheduleType === ScheduleType.WEEKDAYS ? parseWeekdays(formData) : [];
+
+  if (!Number.isFinite(points) || points <= 0) return "请填写大于 0 的奖励阳光";
+  if (scheduleType === ScheduleType.WEEKDAYS && weekdays.length === 0) {
+    return "请至少选一个生效星期";
+  }
+
+  const child = await getPrimaryChild();
+  const template = await prisma.taskTemplate.findUnique({ where: { id: templateId } });
+  if (!template || template.childId !== child.id) return "任务模板不存在";
+
+  const shared = {
+    title: parsed.title,
+    subject: parsed.subject,
+    amount: parsed.amount,
+    unit: parsed.unit,
+    emoji,
+    points,
+  };
+
+  await prisma.$transaction([
+    prisma.taskTemplate.update({
+      where: { id: templateId },
+      data: { ...shared, scheduleType, weekdays },
+    }),
+    prisma.dailyTask.updateMany({
+      where: {
+        childId: child.id,
+        templateId,
+        date: todayAsUtcDate(),
+        status: TaskStatus.PENDING,
+      },
+      data: shared,
+    }),
+  ]);
+
+  revalidatePath("/admin/templates");
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
   return null;
 }
 

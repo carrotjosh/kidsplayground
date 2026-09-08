@@ -66,13 +66,60 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
 /**
  * 获取"今天"的任务列表：先按需把今天生效的周期性模板补齐成 DailyTask，
  * 再把模板任务和已有的临时任务一起返回。
+ *
+ * 性能：模板和今天已有的任务并行查（不互相依赖），只有在真的缺任务时才写库。
+ * 一天里第一次打开会是 3 次数据库往返，之后每次都只有 2 次——数据库在境外时
+ * 一次往返 200ms+，省一次就是省 200ms。
  */
 export async function getOrCreateTodayTasks(childId: string) {
   const dateString = todayDateString();
-  await ensureDailyTasksForDate(prisma, childId, dateString);
+  const date = todayAsUtcDate();
+  const weekday = weekdayOfDateString(dateString);
+  const { type: dayType } = getDayType(dateString);
+
+  const [activeTemplates, existing] = await Promise.all([
+    prisma.taskTemplate.findMany({ where: { childId, active: true } }),
+    prisma.dailyTask.findMany({ where: { childId, date }, orderBy: { createdAt: "asc" } }),
+  ]);
+
+  const dueTemplates = activeTemplates.filter((template) => {
+    switch (template.scheduleType) {
+      case ScheduleType.WORKDAY:
+        return dayType === "WORKDAY";
+      case ScheduleType.HOLIDAY:
+        return dayType === "HOLIDAY";
+      case ScheduleType.WEEKDAYS:
+      default:
+        return template.weekdays.includes(weekday);
+    }
+  });
+
+  const existingTemplateIds = new Set(existing.map((t) => t.templateId).filter(Boolean));
+  const missing = dueTemplates.filter((t) => !existingTemplateIds.has(t.id));
+
+  // 今天该有的模板任务都已经生成过了，直接返回，不用再写库、也不用重新查。
+  if (missing.length === 0) {
+    return existing;
+  }
+
+  await prisma.dailyTask.createMany({
+    data: missing.map((template) => ({
+      childId,
+      date,
+      title: template.title,
+      subject: template.subject,
+      amount: template.amount,
+      unit: template.unit,
+      emoji: template.emoji,
+      points: template.points,
+      source: TaskSource.TEMPLATE,
+      templateId: template.id,
+    })),
+    skipDuplicates: true,
+  });
 
   return prisma.dailyTask.findMany({
-    where: { childId, date: todayAsUtcDate() },
+    where: { childId, date },
     orderBy: { createdAt: "asc" },
   });
 }
