@@ -1,0 +1,21 @@
+[Unit]
+Description=打卡小星星 (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/kid-checkin
+EnvironmentFile=/home/ubuntu/kid-checkin/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start
+Restart=always
+RestartSec=5
+# 日志走 journald：journalctl -u kid-checkin -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
