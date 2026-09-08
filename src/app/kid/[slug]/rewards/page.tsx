@@ -29,7 +29,7 @@ export default async function RewardsPage({
   ]);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
+    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
       <header className="flex items-center justify-between gap-3">
         <h1 className="pixel-text-outline text-2xl font-bold text-white lg:text-4xl 2xl:text-5xl">
           礼物橱窗 🎁

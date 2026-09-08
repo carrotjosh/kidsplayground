@@ -1,6 +1,7 @@
 import { LedgerType, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { getDayType, type DayType } from "@/lib/holidays";
 import {
   addMonths,
   currentMonthString,
@@ -23,6 +24,9 @@ export type DayCell = {
   reachedGoal: boolean; // earned >= 每日达标线
   planted: boolean; // 当天种过植物（种了就免疫僵尸）
   isFuture: boolean;
+  dayType: DayType; // 按国家放假安排：工作日 / 普通周末 / 法定节假日
+  holidayName: string | null; // 节假日名字，比如"国庆节"
+  isMakeupWorkday: boolean; // 调休补班的周末
 };
 
 export type MonthSummary = {
@@ -88,6 +92,7 @@ export async function getMonthSummary(childId: string, month: string): Promise<M
 
   const days: DayCell[] = dates.map((date) => {
     const cell = byDate.get(date) ?? { total: 0, done: 0, earned: 0 };
+    const { type: dayType, holidayName, isMakeupWorkday } = getDayType(date);
     return {
       date,
       earned: cell.earned,
@@ -97,6 +102,9 @@ export async function getMonthSummary(childId: string, month: string): Promise<M
       reachedGoal: cell.earned >= child.dailyGoalPoints,
       planted: plantedDates.has(date),
       isFuture: date > today,
+      dayType,
+      holidayName,
+      isMakeupWorkday,
     };
   });
 

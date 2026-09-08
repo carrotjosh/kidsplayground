@@ -1,6 +1,7 @@
-import { LedgerType, TaskSource, TaskStatus } from "@/generated/prisma/client";
+import { LedgerType, ScheduleType, TaskSource, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { getDayType } from "@/lib/holidays";
 import {
   dateStringToUtcDate,
   todayAsUtcDate,
@@ -23,9 +24,24 @@ type Db = {
 export async function ensureDailyTasksForDate(db: Db, childId: string, dateString: string) {
   const date = dateStringToUtcDate(dateString);
   const weekday = weekdayOfDateString(dateString);
+  const { type: dayType } = getDayType(dateString);
 
-  const dueTemplates = await db.taskTemplate.findMany({
-    where: { childId, active: true, weekdays: { has: weekday } },
+  // 模板数量很少（家庭场景通常个位数），全部取出来在内存里按生效规则过滤，
+  // 比把"法定工作日/节假日"这种需要查日历表的判断塞进 SQL 简单可靠。
+  const activeTemplates = await db.taskTemplate.findMany({
+    where: { childId, active: true },
+  });
+
+  const dueTemplates = activeTemplates.filter((template) => {
+    switch (template.scheduleType) {
+      case ScheduleType.WORKDAY:
+        return dayType === "WORKDAY";
+      case ScheduleType.HOLIDAY:
+        return dayType === "HOLIDAY";
+      case ScheduleType.WEEKDAYS:
+      default:
+        return template.weekdays.includes(weekday);
+    }
   });
 
   if (dueTemplates.length > 0) {
@@ -34,6 +50,9 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
         childId,
         date,
         title: template.title,
+        subject: template.subject,
+        amount: template.amount,
+        unit: template.unit,
         emoji: template.emoji,
         points: template.points,
         source: TaskSource.TEMPLATE,
@@ -62,6 +81,9 @@ export async function createAdhocTask(params: {
   childId: string;
   date: Date;
   title: string;
+  subject?: string | null;
+  amount?: number | null;
+  unit?: string | null;
   emoji?: string | null;
   points: number;
 }) {
@@ -70,6 +92,9 @@ export async function createAdhocTask(params: {
       childId: params.childId,
       date: params.date,
       title: params.title,
+      subject: params.subject ?? null,
+      amount: params.amount ?? null,
+      unit: params.unit ?? null,
       emoji: params.emoji ?? null,
       points: params.points,
       source: TaskSource.ADHOC,

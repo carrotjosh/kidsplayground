@@ -93,6 +93,41 @@ body {
   background-repeat: repeat-x;
 }
 
+/* ------- 拼音标注 ------- */
+
+/* <ruby> 默认行高很挤，拼音会贴着汉字、字和字也会挤在一起。
+   这里把每个字左右都留出固定间距，保证"字与字均匀、拼音与拼音之间也有空隙"，
+   小朋友逐字认读时不会串行。 */
+ruby {
+  ruby-position: over;
+  ruby-align: center;
+  /* 每个带拼音的字左右各留一点，拼音比汉字宽时也不会和邻字的拼音黏在一起 */
+  margin-inline: 0.18em;
+  line-height: 2;
+}
+
+ruby rt {
+  font-size: 0.4em;
+  /* 拼音是带声调符号的拉丁字母，交给系统无衬线字体渲染，比像素/艺术字体清楚 */
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.2;
+  /* 拼音本身字母之间也松一点，avoid "shū" 挤成一坨 */
+  letter-spacing: 0.02em;
+  /* 拼音块左右各留白，相邻两个字的拼音之间一定有空隙 */
+  padding-inline: 0.12em;
+  color: inherit;
+  opacity: 0.75;
+  user-select: none;
+}
+
+/* 孩子端正文：不加粗（这个中文字体只有一个字重，加粗是浏览器伪造的，笔画会糊成一团，
+   小朋友正在认字阶段，需要看清每一笔），并把字间距稍微放开一点。 */
+.kid-text {
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
 /* ------- 动画 ------- */
 
 @keyframes bounce-slow {

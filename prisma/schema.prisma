@@ -41,6 +41,14 @@ enum TaskSource {
   ADHOC
 }
 
+// 任务模板在哪些日子生效：
+// WEEKDAYS 按星期几（用 weekdays 数组）/ WORKDAY 法定工作日（含调休补班）/ HOLIDAY 法定节假日
+enum ScheduleType {
+  WEEKDAYS
+  WORKDAY
+  HOLIDAY
+}
+
 // PENDING：待完成
 // PENDING_REVIEW：孩子已点"完成"提交，等家长审核（不发阳光）
 // DONE：家长已批准（已发阳光），也可能是家长直接补打卡
@@ -79,10 +87,16 @@ model TaskTemplate {
   id        String   @id @default(cuid())
   childId   String
   child     Child    @relation(fields: [childId], references: [id])
+  // title 是"主题+数值+单位"拼出来的完整名字，给流水说明、家长端列表这类纯文本场景用；
+  // 孩子端卡片则分别渲染下面三个字段，主题一行、数值+单位一行，不会挤成一团。
   title     String
+  subject   String? // 主题，比如"读书"
+  amount    Int? // 数值，比如 20
+  unit      String? // 单位，比如"分钟"
   emoji     String?
   points    Int
-  weekdays  Int[] // 0=周日 ... 6=周六
+  scheduleType ScheduleType @default(WEEKDAYS)
+  weekdays  Int[] // 只在 scheduleType = WEEKDAYS 时有意义。0=周日 ... 6=周六
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,12 +113,18 @@ model DailyTask {
   childId     String
   child       Child      @relation(fields: [childId], references: [id])
   date        DateTime   @db.Date
+  // 同 TaskTemplate：title 是拼好的完整名字，subject/amount/unit 供孩子端分行展示。
   title       String
+  subject     String?
+  amount      Int?
+  unit        String?
   emoji       String?
   points      Int
   source      TaskSource
   templateId  String?
-  template    TaskTemplate? @relation(fields: [templateId], references: [id])
+  // onDelete: SetNull —— 家长删除模板时，已经生成的历史任务要保留（title/points 都有快照），
+  // 只是断开和模板的关联，不能因为删模板把孩子的打卡历史一起删掉。
+  template    TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status      TaskStatus @default(PENDING)
   completedAt DateTime?
   createdAt   DateTime   @default(now())

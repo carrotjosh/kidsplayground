@@ -1,12 +1,15 @@
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
 
-import { toggleTemplateActiveAction } from "./actions";
+import { deleteTemplateAction, toggleTemplateActiveAction } from "./actions";
+import { DeleteTemplateButton } from "./DeleteTemplateButton";
 import { TemplateForm } from "./TemplateForm";
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-function formatWeekdays(weekdays: number[]): string {
+function formatSchedule(scheduleType: string, weekdays: number[]): string {
+  if (scheduleType === "WORKDAY") return "法定工作日（含调休补班）";
+  if (scheduleType === "HOLIDAY") return "法定节假日";
   return [...weekdays]
     .sort((a, b) => a - b)
     .map((d) => `周${WEEKDAY_LABELS[d]}`)
@@ -33,26 +36,37 @@ export default async function TemplatesPage() {
           templates.map((template) => (
             <div
               key={template.id}
-              className="flex items-center justify-between pixel-card bg-white p-4"
+              className="flex items-center justify-between gap-3 pixel-card bg-white p-4"
             >
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold">
                   {template.emoji} {template.title}（{template.points} 阳光）
+                  {!template.active && (
+                    <span className="ml-2 text-xs text-slate-400">已停用</span>
+                  )}
                 </p>
-                <p className="text-sm text-slate-500">{formatWeekdays(template.weekdays)}</p>
+                <p className="text-sm text-slate-500">
+                  {formatSchedule(template.scheduleType, template.weekdays)}
+                </p>
               </div>
-              <form action={toggleTemplateActiveAction.bind(null, template.id, !template.active)}>
-                <button
-                  type="submit"
-                  className={
-                    template.active
-                      ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
-                      : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
-                  }
-                >
-                  {template.active ? "停用" : "启用"}
-                </button>
-              </form>
+              <div className="flex shrink-0 gap-2">
+                <form action={toggleTemplateActiveAction.bind(null, template.id, !template.active)}>
+                  <button
+                    type="submit"
+                    className={
+                      template.active
+                        ? "pixel-btn bg-white px-3 py-1 text-sm text-slate-600"
+                        : "pixel-btn bg-nes-green px-3 py-1 text-sm text-white"
+                    }
+                  >
+                    {template.active ? "停用" : "启用"}
+                  </button>
+                </form>
+                <DeleteTemplateButton
+                  deleteAction={deleteTemplateAction.bind(null, template.id)}
+                  title={template.title}
+                />
+              </div>
             </div>
           ))
         )}
