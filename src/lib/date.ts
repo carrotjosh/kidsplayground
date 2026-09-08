@@ -95,6 +95,14 @@ export function firstWeekdayOfMonth(month: string): number {
   return weekdayOfDateString(`${month}-01`);
 }
 
+const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 把 YYYY-MM-DD 格式化成「9月8日 星期二」，给孩子端展示当天日期用。 */
+export function formatDateWithWeekday(dateString: string): string {
+  const [, m, d] = dateString.split("-").map(Number);
+  return `${m}月${d}日 星期${WEEKDAY_CN[weekdayOfDateString(dateString)]}`;
+}
+
 /** 列出某个月的全部日期字符串：["2026-09-01", ..., "2026-09-30"]。 */
 export function datesInMonth(month: string): string[] {
   const total = daysInMonth(month);

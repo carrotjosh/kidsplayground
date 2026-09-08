@@ -34,7 +34,9 @@ export function MonthCalendar({
         {basePath ? (
           <Link
             href={`${basePath}?month=${addMonths(month, -1)}`}
-            className="pixel-btn bg-white px-3 py-2 text-sm text-slate-700"
+            className={`pixel-btn kid-text bg-white text-slate-700 ${
+              big ? "px-5 py-2 text-xl lg:text-2xl" : "px-3 py-2 text-sm"
+            }`}
           >
             ← 上月
           </Link>
@@ -47,7 +49,9 @@ export function MonthCalendar({
         {basePath ? (
           <Link
             href={`${basePath}?month=${addMonths(month, 1)}`}
-            className="pixel-btn bg-white px-3 py-2 text-sm text-slate-700"
+            className={`pixel-btn kid-text bg-white text-slate-700 ${
+              big ? "px-5 py-2 text-xl lg:text-2xl" : "px-3 py-2 text-sm"
+            }`}
           >
             下月 →
           </Link>
@@ -87,18 +91,26 @@ export function MonthCalendar({
           {days.map((day) => {
             const dayNum = Number(day.date.slice(-2));
 
+            // 休息日 = 法定节假日 + 普通双休日，两者都标「休」，
+            // 只是法定节假日底色更深一点，好和普通周末区分。
+            const isRestDay = day.dayType === "HOLIDAY" || day.dayType === "WEEKEND";
+            const restTone =
+              day.dayType === "HOLIDAY"
+                ? "border-rose-300 bg-rose-100 text-rose-500"
+                : "border-rose-200 bg-rose-50 text-rose-400";
+
             // 底色：先看打卡结果，没结果的日子再退回按"日子类型"上底色，
-            // 这样节假日一眼能看出来，不会和"没打卡"混淆。
+            // 这样休息日一眼能看出来，不会和"该打卡却没打"混淆。
             const tone = day.isFuture
-              ? day.dayType === "HOLIDAY"
-                ? "border-rose-200 bg-rose-50 text-rose-400"
+              ? isRestDay
+                ? restTone
                 : "border-slate-200 bg-white text-slate-300"
               : day.reachedGoal
                 ? "border-nes-black bg-nes-green text-white"
                 : day.hasTasks
                   ? "border-nes-black bg-nes-yellow text-nes-black"
-                  : day.dayType === "HOLIDAY"
-                    ? "border-rose-300 bg-rose-100 text-rose-500"
+                  : isRestDay
+                    ? restTone
                     : "border-slate-300 bg-slate-100 text-slate-400";
 
             const title = [
@@ -118,9 +130,13 @@ export function MonthCalendar({
                 }`}
                 title={title}
               >
-                {/* 右上角角标：法定节假日标"休"，调休补班的周末标"班" */}
-                {day.dayType === "HOLIDAY" && (
-                  <span className="absolute right-0.5 top-0 text-[9px] leading-tight text-nes-red lg:text-xs">
+                {/* 右上角角标：休息日（法定节假日 + 双休日）标"休"，调休补班的周末标"班" */}
+                {isRestDay && (
+                  <span
+                    className={`absolute right-0.5 top-0 text-[9px] leading-tight lg:text-xs ${
+                      day.dayType === "HOLIDAY" ? "text-nes-red" : "text-rose-400"
+                    }`}
+                  >
                     休
                   </span>
                 )}
@@ -161,6 +177,10 @@ export function MonthCalendar({
         <span className="flex items-center gap-1">
           <i className="inline-block h-3 w-3 border-2 border-rose-300 bg-rose-100" />
           法定节假日「休」
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-3 w-3 border-2 border-rose-200 bg-rose-50" />
+          双休日「休」
         </span>
         <span>「班」= 调休补班</span>
         <span>🌱 当天种了植物</span>

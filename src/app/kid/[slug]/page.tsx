@@ -8,7 +8,12 @@ import { PointsBadge } from "@/components/PointsBadge";
 import { CompactTaskCard } from "@/components/TaskCard";
 import { getMonthSummary, settleMonthlyBonusForChild } from "@/lib/calendar";
 import { getChildBySlug } from "@/lib/child";
-import { currentMonthString } from "@/lib/date";
+import {
+  currentMonthString,
+  formatDateWithWeekday,
+  isValidMonthString,
+  todayDateString,
+} from "@/lib/date";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
@@ -30,10 +35,15 @@ export async function generateMetadata({
 
 export default async function KidHomePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, { month: monthParam }] = await Promise.all([params, searchParams]);
+  // 日历可以用左右箭头翻月；任务永远是"今天"的，不跟着日历翻。
+  const month = monthParam && isValidMonthString(monthParam) ? monthParam : currentMonthString();
+
   const child = await getChildBySlug(slug);
   if (!child) notFound();
 
@@ -42,8 +52,9 @@ export default async function KidHomePage({
   const [tasks, balance, summary] = await Promise.all([
     getOrCreateTodayTasks(child.id),
     getPointsBalance(child.id),
-    getMonthSummary(child.id, currentMonthString()),
+    getMonthSummary(child.id, month),
   ]);
+  const today = todayDateString();
 
   return (
     // h-dvh + overflow-hidden：整页锁在一屏内铺满，孩子不用滚动。
@@ -60,9 +71,14 @@ export default async function KidHomePage({
       <div className="flex min-h-0 flex-1 gap-3 lg:gap-4">
         {/* 左：今天我要做的事 */}
         <section className="flex min-h-0 w-[38%] max-w-md shrink-0 flex-col gap-1">
-          <h2 className="kid-text pixel-text-outline shrink-0 text-base text-white lg:text-xl">
-            <Pinyin text="今天我要做的事" />
-          </h2>
+          <div className="shrink-0">
+            <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
+              <Pinyin text="今天我要做的事" />
+            </h2>
+            <p className="kid-text pixel-text-outline text-sm text-white lg:text-base">
+              <Pinyin text={formatDateWithWeekday(today)} />
+            </p>
+          </div>
           {tasks.length === 0 ? (
             <p className="pixel-card kid-text bg-white p-3 text-center text-lg text-slate-500">
               <Pinyin text="今天没有任务，休息一下吧" /> 🌤️
@@ -94,7 +110,8 @@ export default async function KidHomePage({
             </Link>
           </div>
           <div className="min-h-0 flex-1">
-            <MonthCalendar summary={summary} basePath={null} big fitHeight />
+            {/* basePath 传当前页，日历上的左右箭头就能在首页原地翻月 */}
+            <MonthCalendar summary={summary} basePath={`/kid/${slug}`} big fitHeight />
           </div>
         </section>
       </div>
