@@ -10,22 +10,26 @@ const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
  *   达标（≥ 每日达标线）→ 绿色；有任务但没达标 → 黄色；有任务日没打卡 → 灰色。
  * basePath 用来生成上/下个月的链接（月份通过 ?month= 查询参数传递），传 null 就不显示翻月按钮。
  * big：孩子端用的放大版（日期和阳光数字都更大）。
+ * fitHeight：把日历撑满父容器剩余高度（左右分栏时用），格子不再是正方形而是按可用高度均分行。
  */
 export function MonthCalendar({
   summary,
   basePath,
   big = false,
+  fitHeight = false,
 }: {
   summary: MonthSummary;
   basePath: string | null;
   big?: boolean;
+  fitHeight?: boolean;
 }) {
   const { month, days, dailyGoalPoints } = summary;
   const leadingBlanks = firstWeekdayOfMonth(month);
   const [year, monthNum] = month.split("-");
+  const rowCount = Math.ceil((leadingBlanks + days.length) / 7);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={`flex flex-col gap-2 ${fitHeight ? "h-full" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         {basePath ? (
           <Link
@@ -52,9 +56,13 @@ export function MonthCalendar({
         )}
       </div>
 
-      <div className="pixel-card bg-white p-2 lg:p-3">
+      <div
+        className={`pixel-card flex flex-col bg-white p-2 lg:p-3 ${
+          fitHeight ? "min-h-0 flex-1" : ""
+        }`}
+      >
         <div
-          className={`mb-1 grid grid-cols-7 gap-1 text-center text-slate-500 ${
+          className={`mb-1 grid shrink-0 grid-cols-7 gap-1 text-center text-slate-500 ${
             big ? "text-sm lg:text-base" : "text-xs"
           }`}
         >
@@ -66,7 +74,12 @@ export function MonthCalendar({
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          className={`grid grid-cols-7 gap-1 ${fitHeight ? "min-h-0 flex-1" : ""}`}
+          style={
+            fitHeight ? { gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))` } : undefined
+          }
+        >
           {Array.from({ length: leadingBlanks }, (_, i) => (
             <div key={`blank-${i}`} />
           ))}
@@ -100,7 +113,9 @@ export function MonthCalendar({
             return (
               <div
                 key={day.date}
-                className={`relative flex aspect-square flex-col items-center justify-center border-2 ${tone}`}
+                className={`relative flex flex-col items-center justify-center border-2 ${tone} ${
+                  fitHeight ? "" : "aspect-square"
+                }`}
                 title={title}
               >
                 {/* 右上角角标：法定节假日标"休"，调休补班的周末标"班" */}

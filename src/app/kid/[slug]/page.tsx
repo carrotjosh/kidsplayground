@@ -56,45 +56,48 @@ export default async function KidHomePage({
         <PointsBadge balance={balance} />
       </header>
 
-      {/* 一、今天我要做的事：横向一条，任务多了左右滑动，不抢日历的高度 */}
-      <section className="shrink-0">
-        <h2 className="kid-text pixel-text-outline mb-1 text-base text-white lg:text-xl">
-          <Pinyin text="今天我要做的事" />
-        </h2>
-        {tasks.length === 0 ? (
-          <p className="pixel-card kid-text bg-white p-3 text-center text-lg text-slate-500">
-            <Pinyin text="今天没有任务，休息一下吧" /> 🌤️
-          </p>
-        ) : (
-          <div className="flex items-start gap-2 overflow-x-auto pb-1 lg:gap-3">
-            {tasks.map((task) => (
-              <CompactTaskCard
-                key={task.id}
-                task={task}
-                submitAction={submitTaskAction.bind(null, slug, task.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 二、我的打卡日历：居中一块合理宽度（不横向拉满整个大屏），格子是正方形、日期和阳光都看得清 */}
-      <section className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-        <div className="flex shrink-0 items-baseline justify-between gap-2">
-          <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
-            <Pinyin text="我的打卡日历" />
+      {/* 中间区域左右分栏：左边今天要做的事（一列等大卡片），右边打卡日历（撑满剩余高度） */}
+      <div className="flex min-h-0 flex-1 gap-3 lg:gap-4">
+        {/* 左：今天我要做的事 */}
+        <section className="flex min-h-0 w-[38%] max-w-md shrink-0 flex-col gap-1">
+          <h2 className="kid-text pixel-text-outline shrink-0 text-base text-white lg:text-xl">
+            <Pinyin text="今天我要做的事" />
           </h2>
-          <Link
-            href={`/kid/${slug}/calendar`}
-            className="kid-text pixel-text-outline text-sm text-white lg:text-base"
-          >
-            <Pinyin text="看以前的" /> →
-          </Link>
-        </div>
-        <div className="mx-auto w-full max-w-xl lg:max-w-2xl">
-          <MonthCalendar summary={summary} basePath={null} big />
-        </div>
-      </section>
+          {tasks.length === 0 ? (
+            <p className="pixel-card kid-text bg-white p-3 text-center text-lg text-slate-500">
+              <Pinyin text="今天没有任务，休息一下吧" /> 🌤️
+            </p>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+              {tasks.map((task) => (
+                <CompactTaskCard
+                  key={task.id}
+                  task={task}
+                  submitAction={submitTaskAction.bind(null, slug, task.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 右：我的打卡日历 */}
+        <section className="flex min-h-0 flex-1 flex-col gap-1">
+          <div className="flex shrink-0 items-baseline justify-between gap-2">
+            <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
+              <Pinyin text="我的打卡日历" />
+            </h2>
+            <Link
+              href={`/kid/${slug}/calendar`}
+              className="kid-text pixel-text-outline text-sm text-white lg:text-base"
+            >
+              <Pinyin text="看以前的" /> →
+            </Link>
+          </div>
+          <div className="min-h-0 flex-1">
+            <MonthCalendar summary={summary} basePath={null} big fitHeight />
+          </div>
+        </section>
+      </div>
 
       {/* 三、我的花园 + 礼物商店 */}
       <div className="flex shrink-0 gap-2 lg:gap-3">
