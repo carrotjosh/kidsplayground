@@ -4,18 +4,27 @@ import { CreatureCard } from "@/components/CreatureCard";
 import { KidNavBar } from "@/components/KidNavBar";
 import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
-import { CaughtStatus, KidTheme } from "@/generated/prisma/client";
+import { BallTier, CaughtStatus, KidTheme } from "@/generated/prisma/client";
+import { dateStringToUtcDate, todayDateString } from "@/lib/date";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { getPointsBalance } from "@/lib/points";
 import {
+  catchProbability,
+  ensureTodayEncounters,
+  MAX_ATTEMPTS_PER_ENCOUNTER,
   POKEDEX_MILESTONE_BONUS,
   POKEDEX_MILESTONE_STEP,
+  masteryGoal,
+  MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
+  REFRESH_COSTS,
   settlePokedexForChild,
 } from "@/lib/pokedex";
 
-import { BallShop } from "./BallShop";
+import { refreshEncountersAction } from "./actions";
+import { EncounterBoard } from "./EncounterBoard";
+import { RefreshButton } from "./RefreshButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +38,11 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 懒结算：把欠下的"离家出走"判定补齐，返回这次新发生的事件做一次性提示
   const events = await settlePokedexForChild(child.id);
 
-  const [caught, balls, balance, totalSpecies] = await Promise.all([
+  // 今天遇到谁：一天只生成一次，刷新页面不会重摇（否则一直刷就能刷出传说）
+  const today = todayDateString();
+  await ensureTodayEncounters(child.id, today);
+
+  const [caught, balls, balance, totalSpecies, encounters] = await Promise.all([
     prisma.caught.findMany({
       where: { childId: child.id },
       orderBy: [{ rarity: "desc" }, { caughtAt: "desc" }],
@@ -40,12 +53,34 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
     }),
     getPointsBalance(child.id),
     prisma.pokemonSpecies.count(),
+    prisma.dailyEncounter.findMany({
+      where: { childId: child.id, date: dateStringToUtcDate(today) },
+      orderBy: { slot: "asc" },
+    }),
   ]);
 
   const owned = caught.filter((c) => c.status === CaughtStatus.OWNED);
   const fled = caught.filter((c) => c.status === CaughtStatus.FLED);
   const distinctCount = new Set(owned.map((c) => c.speciesId)).size;
   // 距离下一个里程碑还差几种
+  // 牌库按种类归组：同一种抓到几只只占一张卡，右上角标 ×N。
+  // owned 已经按 rarity desc + caughtAt desc 排过，所以每组第一只就是代表卡。
+  const deckMap = new Map<number, { representative: (typeof owned)[number]; count: number }>();
+  for (const c of owned) {
+    const hit = deckMap.get(c.speciesId);
+    if (hit) hit.count += 1;
+    else deckMap.set(c.speciesId, { representative: c, count: 1 });
+  }
+  // 今天刷了几次 = 当天最大的 refreshRound（见 schema 里的注释）
+  const refreshesUsed = Math.max(0, ...encounters.map((e) => e.refreshRound));
+  const nextRefreshCost = REFRESH_COSTS[Math.min(refreshesUsed, REFRESH_COSTS.length - 1)];
+
+  const deck = [...deckMap.values()];
+  // 已经攒够数量、拿过"这一种收集完成"奖励的种数
+  const masteredCount = deck.filter(
+    (d) => d.count >= masteryGoal(d.representative.rarity)
+  ).length;
+
   const toNextMilestone =
     POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP || POKEDEX_MILESTONE_STEP);
 
@@ -103,40 +138,123 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </div>
       </section>
 
-      {/* 精灵球商店 */}
+      {/* 今天遇到的宝可梦 —— 先看到有谁，再决定用什么球 */}
       <section className="flex flex-col gap-3">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
-          <Pinyin text="买个球去抓吧" />
+          <Pinyin text="今天遇到了" /> 👀
         </h2>
+        {/* 有偿刷新：两只都不想要的时候，给孩子一个主动改变局面的选项 */}
+        {encounters.length > 0 && (
+          <RefreshButton
+            action={refreshEncountersAction.bind(null, slug)}
+            disabled={refreshesUsed >= MAX_REFRESHES_PER_DAY || balance < nextRefreshCost}
+            label={
+              refreshesUsed >= MAX_REFRESHES_PER_DAY ? (
+                <Pinyin text="今天的刷新用完啦" />
+              ) : balance < nextRefreshCost ? (
+                <Pinyin text={`刷新要 ${nextRefreshCost} 阳光，还不够`} />
+              ) : (
+                <Pinyin
+                  text={`换一批（${nextRefreshCost} 阳光，今天还能刷 ${MAX_REFRESHES_PER_DAY - refreshesUsed} 次）`}
+                />
+              )
+            }
+            confirmText={`花 ${nextRefreshCost} 阳光换两只新的？已经抓到的会留着。`}
+          />
+        )}
+
+        {child.catchMissStreak > 0 && (
+          <p className="pixel-card kid-text bg-nes-yellow p-3 text-center text-base text-nes-black lg:text-lg">
+            <Pinyin text={`连续 ${child.catchMissStreak} 次没抓到，下一次运气更高`} /> 🍀
+          </p>
+        )}
         {balls.length === 0 ? (
           <p className="pixel-card kid-text bg-white p-6 text-center text-slate-500">
             <Pinyin text="还没有精灵球，等家长上架吧" />
           </p>
+        ) : encounters.length === 0 ? (
+          <p className="pixel-card kid-text bg-white p-6 text-center text-slate-500">
+            <Pinyin text="今天还没有遇到宝可梦，刷新一下试试" />
+          </p>
         ) : (
-          <BallShop
+          <EncounterBoard
             slug={slug}
-            balls={balls.map((b) => ({ id: b.id, tier: b.tier, title: b.title, cost: b.cost }))}
             balance={balance}
-            missStreak={child.catchMissStreak}
-            // 固定文案在服务端渲染好再传进去——客户端组件里不能用 <Pinyin>，
-            // 它会把 pinyin-pro 的整本字典打进浏览器包（见 BallShop 的注释）。
+            encounters={encounters.map((e) => ({
+              id: e.id,
+              nameZh: e.nameZh,
+              types: e.types,
+              rarity: e.rarity,
+              artUrl: e.artUrl,
+              gender: e.gender,
+              ability: e.ability,
+              moveName: e.moveName,
+              movePower: e.movePower,
+              hp: e.hp,
+              attack: e.attack,
+              defense: e.defense,
+              speed: e.speed,
+              isShiny: e.isShiny,
+              attemptsLeft: MAX_ATTEMPTS_PER_ENCOUNTER - e.attemptsUsed,
+              status: e.status,
+            }))}
+            // 成功率是"该用哪个球"唯一有意义的依据，所以直接摆在按钮上。
+            // 只能在服务端算：catchProbability 在 lib/pokedex 里，那是个服务端模块。
+            // 注意每只的稀有度不同，所以这份表是按 encounter 分开算的。
+            ballsByEncounter={Object.fromEntries(
+              encounters.map((e) => [
+                e.id,
+                balls.map((b) => ({
+                  id: b.id,
+                  tier: b.tier,
+                  cost: b.cost,
+                  chance:
+                    b.tier === BallTier.MASTER
+                      ? 1
+                      : catchProbability(e.rarity, b.catchPower, child.catchMissStreak),
+                })),
+              ])
+            )}
             labels={{
               ballTitles: Object.fromEntries(
                 balls.map((b) => [b.id, <Pinyin key={b.id} text={b.title} />])
               ),
-              throwIt: <Pinyin text="扔球！" />,
-              notEnough: <Pinyin text="阳光不够" />,
+              names: Object.fromEntries(
+                encounters.map((e) => [e.id, <Pinyin key={e.id} text={e.nameZh} />])
+              ),
+              details: Object.fromEntries(
+                encounters.map((e) => [
+                  e.id,
+                  <Pinyin key={e.id} text={`${e.ability} · ${e.moveName} ${e.movePower}`} />,
+                ])
+              ),
+              // 预渲染每种剩余次数的文案：函数没法传给客户端组件
+              attemptsLeft: Object.fromEntries(
+                Array.from({ length: MAX_ATTEMPTS_PER_ENCOUNTER }, (_, i) => [
+                  i + 1,
+                  <Pinyin key={i} text={`还有 ${i + 1} 次机会`} />,
+                ])
+              ),
+              caught: <Pinyin text="抓到啦！" />,
+              fled: <Pinyin text="跑掉了，明天再来" />,
+              notEnough: <Pinyin text="阳光不够，先去做任务" />,
               throwing: <Pinyin text="扔出去…" />,
-              luckHint: <Pinyin text={`连续 ${child.catchMissStreak} 次没抓到，下一次运气更高`} />,
+              shiny: <Pinyin text="闪光！" />,
             }}
           />
         )}
       </section>
 
-      {/* 图鉴本体 */}
+      {/* 牌库：按种类归组，同一种抓到多只显示 ×N。
+          代表卡挑同种里最稀有/最新的那只（owned 已经按 rarity desc, caughtAt desc 排过）。 */}
       <section className="flex flex-col gap-3">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
-          <Pinyin text="我抓到的宝可梦" />
+          <Pinyin text="我的牌库" /> 🗂️
+          <span className="ml-2 text-sm">
+            <Pinyin
+              text={`${distinctCount} 种 / 共 ${owned.length} 只 · 已集满 ${masteredCount} 种`}
+            />
+          </span>
         </h2>
         {owned.length === 0 ? (
           <p className="pixel-card kid-text bg-white p-6 text-center text-lg text-slate-500">
@@ -144,8 +262,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {owned.map((c) => (
-              <CreatureCard key={c.id} creature={c} />
+            {deck.map(({ representative, count }) => (
+              <CreatureCard
+                key={representative.id}
+                creature={representative}
+                count={count}
+                goal={masteryGoal(representative.rarity)}
+              />
             ))}
           </div>
         )}

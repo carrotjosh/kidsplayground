@@ -68,10 +68,16 @@ export type CreatureCardData = {
 export function CreatureCard({
   creature,
   faded = false,
+  count,
+  goal,
 }: {
   creature: CreatureCardData;
   /** 离家出走的那些用灰掉的样式留在图鉴里，孩子看得到自己失去了什么 */
   faded?: boolean;
+  /** 同一种抓到几只。牌库里按种类归组时传 */
+  count?: number;
+  /** 这一种攒够几只算收集完成。传了就在角标上显示 N/目标 */
+  goal?: number;
 }) {
   const frame = RARITY_FRAME[creature.rarity] ?? RARITY_FRAME[1];
 
@@ -109,6 +115,16 @@ export function CreatureCard({
         >
           {GENDER_MARK[creature.gender]}
         </span>
+        {count !== undefined && (goal !== undefined || count > 1) && (
+          <span
+            className={`pixel-border absolute left-0.5 top-0.5 px-1 text-xs font-bold text-white ${
+              goal !== undefined && count >= goal ? "bg-nes-green" : "bg-nes-red"
+            }`}
+            title={goal !== undefined ? `抓到 ${count} 只，集满 ${goal} 只有奖励` : `抓到 ${count} 只`}
+          >
+            {goal !== undefined ? `${count}/${goal}${count >= goal ? " ✓" : ""}` : `×${count}`}
+          </span>
+        )}
       </div>
 
       {/* 属性徽章 */}

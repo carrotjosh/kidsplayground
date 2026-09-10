@@ -47,7 +47,8 @@ model Child {
   gardenSettledThrough DateTime? @db.Date
 
   // 每日达标线：当天已批准的任务加起来达到这么多阳光，这一天就算"打卡成功"（日历上点亮、计入满勤）。
-  dailyGoalPoints Int @default(10)
+  // 默认 20 配合默认任务的每天满分 25——漏掉最小的那项仍然算达标（见 lib/bootstrap.ts）。
+  dailyGoalPoints Int @default(20)
 
   // 月度满勤奖结算游标：已经结算过奖励的最后一个月（存该月 1 号）。为空表示从没结算过。
   bonusSettledThrough DateTime? @db.Date
@@ -67,6 +68,7 @@ model Child {
   redemptions   Redemption[]
   plantTypes    PlantType[]
   plants        Plant[]
+  encounters    DailyEncounter[]
   ballTypes     BallType[]
   caught        Caught[]
 
@@ -114,6 +116,8 @@ enum LedgerType {
   GARDEN_BONUS // 花园集齐一整套后，一次性收获的阳光奖励
   BALL_BUY // 买精灵球消耗的阳光；抓不到也不退，宝可梦离家出走同样不产生流水
   POKEDEX_BONUS // 图鉴收集到里程碑的奖励
+  POKEDEX_DUPLICATE // 抓到已经有的宝可梦，按稀有度返还一点阳光
+  POKEDEX_REFRESH // 花阳光刷新今天遇到的宝可梦
 }
 
 enum RedemptionStatus {
@@ -364,6 +368,57 @@ enum Gender {
 enum CaughtStatus {
   OWNED
   FLED
+}
+
+// 每天遇到的宝可梦。AVAILABLE 还能扔球 / CAUGHT 抓到了 / FLED 机会用完跑了。
+enum EncounterStatus {
+  AVAILABLE
+  CAUGHT
+  FLED
+}
+
+// 今天遇到了哪几只。
+//
+// 为什么要落库而不是每次现摇：孩子看得到"今天出现了什么"才能决定用什么球，
+// 那这份名单就必须是稳定的——每次刷新重摇的话，他只要一直刷新就能刷出传说宝可梦。
+// @@unique([childId, date, slot]) + createMany skipDuplicates 保证一天只生成一次
+// （同 DailyTask 的做法）。
+//
+// 个体属性（性别/特性/技能/闪光）在**遇到时**就摇好存下来，不是抓到时才定：
+// 孩子看到的那只必须就是他抓到的那只，否则"看到闪光才舍得用大师球"这个决策就是假的。
+model DailyEncounter {
+  id      String   @id @default(cuid())
+  childId String
+  child   Child    @relation(fields: [childId], references: [id])
+  date    DateTime @db.Date
+  slot    Int
+
+  speciesId Int
+  nameZh    String
+  types     String[]
+  rarity    Int
+  artUrl    String
+
+  gender    Gender
+  ability   String
+  moveName  String
+  movePower Int
+  hp        Int
+  attack    Int
+  defense   Int
+  speed     Int
+  isShiny   Boolean @default(false)
+
+  attemptsUsed Int             @default(0)
+  status       EncounterStatus @default(AVAILABLE)
+  // 第几轮刷新出来的：0 是当天自动生成的那批，1~3 是花阳光刷出来的。
+  // "今天刷了几次" = 当天最大的 refreshRound，不用另存计数器，
+  // 也不受时区影响（date 是按中国时区算好的 @db.Date）。
+  refreshRound Int             @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@unique([childId, date, slot])
+  @@index([childId, date])
 }
 
 // 抓到的宝可梦实例。所有展示用字段都是快照（同 Plant / DailyTask 的做法）：

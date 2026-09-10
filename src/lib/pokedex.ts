@@ -28,23 +28,39 @@ import { ensureDailyTasksForDate } from "@/lib/tasks";
 // 稀有度文案放在 lib/rarity.ts（无依赖，客户端组件也能安全引用），这里转出方便服务端代码使用
 export { RARITY_LABELS } from "@/lib/rarity";
 
-/**
- * 每次扔球先随机"遇到"哪一档的宝可梦，**遇怪表按球的等级变化**。
- *
- * 一开始所有球共用一张遇怪表，模拟 20 万次之后发现大师球是废的：它贵 24 倍，
- * 但抓到的东西和普通球一个分布（60% 都是普通货），花 120 阳光必中一只绿毛虫。
- * 好球必须同时改善"遇到什么"和"抓不抓得住"，才对得起价格，也才符合孩子的直觉——
- * 大师球就该是"攒很久、换一只真正想要的"。
- */
-const ENCOUNTER_WEIGHTS: Record<BallTier, Record<number, number>> = {
-  [BallTier.POKE]: { 1: 65, 2: 25, 3: 9, 4: 1 },
-  [BallTier.GREAT]: { 1: 45, 2: 33, 3: 18, 4: 4 },
-  [BallTier.ULTRA]: { 1: 25, 2: 33, 3: 32, 4: 10 },
-  [BallTier.MASTER]: { 1: 5, 2: 15, 3: 45, 4: 35 },
-};
+/** 每天出现几只。 */
+export const DAILY_ENCOUNTER_COUNT = 2;
 
-/** 遇上之后的基础抓取率。这一层是"越厉害越难抓"的主要体现。 */
-const BASE_CATCH_RATE: Record<number, number> = { 1: 0.7, 2: 0.45, 3: 0.22, 4: 0.08 };
+/** 每只最多能扔几个球，用完就跑掉，明天换一批。 */
+export const MAX_ATTEMPTS_PER_ENCOUNTER = 3;
+
+/**
+ * 每天生成遇怪名单时，各稀有度出现的权重。**只有一张表，和球的等级无关**。
+ *
+ * 历史：之前是每种球一张遇怪表（好球更容易遇到稀有的），那是为了救大师球——
+ * 当时孩子看不到会遇到什么，大师球就只是"贵 24 倍的必中"，模拟 20 万次发现
+ * 它抓到的分布和普通球一样，花 120 阳光必中一只绿毛虫。
+ *
+ * 现在名单每天公开、孩子自己挑目标，那一层补丁就不需要了：看到传说宝可梦才掏大师球，
+ * 这本来就是大师球该有的用法。球的等级从此只影响"抓不抓得住"。
+ *
+ * 数值按"每天 2 只"配的：
+ *   至少一只稀有以上 = 1 - 0.85² ≈ 28%（三四天一次）
+ *   至少一只传说     = 1 - 0.98² ≈ 4%（一个月一次左右）
+ */
+const ENCOUNTER_WEIGHTS: Record<number, number> = { 1: 55, 2: 30, 3: 13, 4: 2 };
+
+/**
+ * 遇上之后的基础抓取率。这一层是"越厉害越难抓"的主要体现。
+ *
+ * 调过两轮。初版 0.7/0.45/0.22/0.08 太松：3 个普通球抓普通 100%、少见 92%，
+ * 高级球打少见直接顶到 95% 的上限，"选哪个球"根本不用想。
+ * 第二版 0.4/0.2/0.09/0.03 又偏紧了一点，于是回调到现在这组。
+ *
+ * 现在 3 个普通球（24 阳光）大致是：普通 95% / 少见 68% / 稀有 39% / 传说 14%。
+ * 手感是"普通的基本能拿下、少见的常有遗憾、稀有的要碰运气、传说的得靠大师球"。
+ */
+const BASE_CATCH_RATE: Record<number, number> = { 1: 0.5, 2: 0.25, 3: 0.12, 4: 0.04 };
 
 /**
  * 保底：每失败一次，下一次的成功率 +25%；连续失败到这个次数就必中。
@@ -53,16 +69,82 @@ const BASE_CATCH_RATE: Record<number, number> = { 1: 0.7, 2: 0.45, 3: 0.22, 4: 0
 export const PITY_BONUS_PER_MISS = 0.25;
 export const PITY_GUARANTEE_AT = 5;
 
-/** 抓取率的上下限：留 5% 的意外，也不让普通球变成必中。大师球单独走 100%。 */
-const MIN_CATCH_RATE = 0.05;
+/**
+ * 抓取率的上下限。大师球单独走 100%，不受这里限制。
+ *
+ * 下限压到 2%：原来是 5%，结果传说那一档 0.03×1（精灵球）和 0.03×1.6（超级球）
+ * 双双被抬到 5%，两种球的数字一模一样——花 20 还是花 8 完全没区别，
+ * "选哪个球"这个决策在最该有意义的地方失效了。
+ */
+const MIN_CATCH_RATE = 0.02;
 const MAX_CATCH_RATE = 0.95;
 
 /** 闪光个体的概率，沿用原作的 1/64（比原作 1/4096 高很多，不然孩子一辈子见不到一只）。 */
 const SHINY_RATE = 1 / 64;
 
+/**
+ * 抓到已经有的那一种，按稀有度返还的阳光。
+ *
+ * 为什么需要：模拟一年发现，**第 2 个月就有 37% 的捕获是重复的、第 3 个月过半**，
+ * 而重复原本什么都不给（不算里程碑、不给阳光）——"又是这只"会直接消掉抓的动力。
+ * 151 种的图鉴迟早会走到"几乎全是重复"，这是有限收集必然的终局，
+ * 所以出路不是让新种类更多，而是让每一次成功都值点什么。
+ *
+ * 数值刻意压在球价（最便宜 8 阳光）之下，保证扔球**永远不可能是赚钱手段**：
+ * 最划算的情况是普通球打稀有重复，期望 0.12 × 20 = 2.4 阳光，远低于 8 的成本。
+ */
+const DUPLICATE_REFUND: Record<number, number> = { 1: 3, 2: 8, 3: 20, 4: 60 };
+
+/**
+ * 生成遇怪时，优先挑"还没抓到过"的那一种的概率。
+ *
+ * 只加在同一稀有度档**内部**：先按 ENCOUNTER_WEIGHTS 摇档次（保证稀有度分布不变），
+ * 再在档内偏向没见过的。模拟下来前三个月的重复率从 37%/52% 降到 21%/33%，
+ * 新手期的新鲜感明显好转；中后期反而略高，因为收集得更快、剩的更少——
+ * 那一段由 DUPLICATE_REFUND 兜着。
+ *
+ * 不设成 1：留一点重复才符合"可以重复抓同一种"的设定，孩子也会有再遇到心头好的惊喜。
+ */
+const UNSEEN_BIAS = 0.5;
+
+/**
+ * 同一种攒够这么多只，就算"这一种收集完成"，发一次奖励。越普通的要越多只。
+ *
+ * 阈值是按模拟定的，不是拍脑袋：跑一年下来，同一种最多能攒到
+ * 普通 9.8 / 少见 6.4 / 稀有 2.5 / 传说 0.9 只。
+ * 所以普通设 5（几个月内能完成好几种）、稀有设 3（要大半年，属于长期目标）、
+ * 传说设 2（基本是终极成就）。设成 10/6/4/2 那种直觉数字的话，稀有和传说永远够不到。
+ */
+const SPECIES_MASTERY_GOAL: Record<number, number> = { 1: 5, 2: 4, 3: 3, 4: 2 };
+
+/** 完成一种的奖励，跟难度走。 */
+const SPECIES_MASTERY_BONUS: Record<number, number> = { 1: 40, 2: 80, 3: 150, 4: 500 };
+
+/** 某个稀有度要攒几只才算收集完成，给页面显示进度用。 */
+export function masteryGoal(rarity: number): number {
+  return SPECIES_MASTERY_GOAL[rarity] ?? 5;
+}
+
+/**
+ * 花阳光刷新今天遇到的宝可梦。**递增计价**，一天最多刷 3 次。
+ *
+ * 为什么要有：每天只出 2 只，运气差的时候两只都是已经集满的普通货，
+ * 孩子当天除了干等没别的事可做——有偿刷新给了他一个"主动改变局面"的选项。
+ *
+ * 为什么递增（5 → 12 → 25）：平价的话孩子会无脑连刷到出稀有的，
+ * 抓宝就退化成了刷新。第一次比一个精灵球（8）还便宜，愿意试；
+ * 第三次 25 阳光正好是一整天的收入，得真的想清楚。三次全刷 42 阳光，要动用存款。
+ *
+ * 不怕被拿来刷传说：3 次刷新多摇 6 次遇怪，撞上传说的概率从 4% 提到约 11%，
+ * 但抓传说还得再掏 200 的大师球，整体算下来一点都不便宜。
+ */
+export const REFRESH_COSTS = [5, 12, 25];
+export const MAX_REFRESHES_PER_DAY = REFRESH_COSTS.length;
+
 /** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。 */
 export const POKEDEX_MILESTONE_STEP = 8;
-export const POKEDEX_MILESTONE_BONUS = 30;
+/** 约等于 4 天的收入（日收入 25）。太小的话集卡这条线撑不起长期目标。 */
+export const POKEDEX_MILESTONE_BONUS = 100;
 
 /**
  * 扔球的结果。文案在这里就用 annotate() **在服务端**标好拼音再返回。
@@ -94,12 +176,11 @@ export type PokedexEvent =
   | { date: string; outcome: "FLED_AWAY"; nameZh: string; artUrl: string }
   | { date: string; outcome: "NOTHING_TO_LOSE" };
 
-/** 按该等级球的遇怪表随机挑一档稀有度。导出是为了能跑大样本模拟验证。 */
-export function rollRarity(tier: BallTier): number {
-  const table = ENCOUNTER_WEIGHTS[tier];
-  const total = Object.values(table).reduce((a, b) => a + b, 0);
+/** 按遇怪表随机挑一档稀有度。导出是为了能跑大样本模拟验证。 */
+export function rollRarity(): number {
+  const total = Object.values(ENCOUNTER_WEIGHTS).reduce((a, b) => a + b, 0);
   let roll = Math.random() * total;
-  for (const [rarity, weight] of Object.entries(table)) {
+  for (const [rarity, weight] of Object.entries(ENCOUNTER_WEIGHTS)) {
     roll -= weight;
     if (roll <= 0) return Number(rarity);
   }
@@ -121,20 +202,155 @@ function pick<T>(items: T[]): T {
  * 不用真的去操作数据库。
  */
 export function catchProbability(rarity: number, catchPower: number, missStreak: number): number {
-  if (missStreak >= PITY_GUARANTEE_AT) return 1;
+  // 保底的必中**不适用于传说**：每只只有 3 次机会、传说一个月才出一次，
+  // 要是连续失败 5 次就能用 8 阳光的普通球必中传说，200 阳光的大师球立刻变废物。
+  // 传说仍然吃 +25%/次 的加成，只是没有硬保底——要么运气，要么大师球。
+  if (missStreak >= PITY_GUARANTEE_AT && rarity < 4) return 1;
   const base = BASE_CATCH_RATE[rarity] ?? 0.5;
   const withPity = base * catchPower * (1 + missStreak * PITY_BONUS_PER_MISS);
   return Math.min(MAX_CATCH_RATE, Math.max(MIN_CATCH_RATE, withPity));
 }
 
 /**
- * 扔一个球。
+ * 生成"今天遇到的"名单，一天只生成一次（靠 @@unique([childId, date, slot]) + skipDuplicates
+ * 保证幂等，同 ensureDailyTasksForDate 的做法）。
+ *
+ * 必须落库而不是每次现摇：孩子能看到名单才谈得上"决定用什么球"，
+ * 而如果每次刷新都重摇，他只要一直刷新就能刷出传说宝可梦。
+ *
+ * 个体属性（性别/特性/闪光）在这里就摇好：孩子看到的那只必须就是他会抓到的那只，
+ * 否则"看到闪光才舍得用大师球"这个决策是假的。
+ */
+export async function ensureTodayEncounters(childId: string, dateString: string) {
+  const date = dateStringToUtcDate(dateString);
+
+  const existing = await prisma.dailyEncounter.count({ where: { childId, date } });
+  if (existing >= DAILY_ENCOUNTER_COUNT) return;
+
+  await createEncounters(childId, dateString, DAILY_ENCOUNTER_COUNT - existing, 0, existing);
+}
+
+/**
+ * 造 count 只新的遇怪。自动生成和有偿刷新共用这一段，保证两边摇出来的分布一模一样。
+ * slot 从 startSlot 往后排，靠 @@unique([childId, date, slot]) 防重复。
+ */
+async function createEncounters(
+  childId: string,
+  dateString: string,
+  count: number,
+  refreshRound: number,
+  startSlot: number
+) {
+  if (count <= 0) return;
+  const date = dateStringToUtcDate(dateString);
+  const ownedSpeciesIds = new Set(
+    (
+      await prisma.caught.findMany({
+        where: { childId, status: CaughtStatus.OWNED },
+        select: { speciesId: true },
+        distinct: ["speciesId"],
+      })
+    ).map((c) => c.speciesId)
+  );
+
+  const rows = [];
+  for (let slot = startSlot; slot < startSlot + count; slot++) {
+    const rarity = rollRarity();
+    const pool = await prisma.pokemonSpecies.findMany({ where: { rarity } });
+    // 理论上四档都有货（63/39/43/6），真空了退回全库，别让孩子看到空名单
+    const candidates = pool.length > 0 ? pool : await prisma.pokemonSpecies.findMany();
+    if (candidates.length === 0) {
+      throw new ActionError("图鉴还没准备好，请家长先导入宝可梦数据");
+    }
+    // 档内偏向没抓到过的（见 UNSEEN_BIAS）。稀有度分布不受影响，只影响档内挑谁。
+    const unseen = candidates.filter((c) => !ownedSpeciesIds.has(c.id));
+    const species = pick(unseen.length > 0 && Math.random() < UNSEEN_BIAS ? unseen : candidates);
+
+    rows.push({
+      childId,
+      date,
+      slot,
+      speciesId: species.id,
+      nameZh: species.nameZh,
+      types: species.types,
+      rarity: species.rarity,
+      artUrl: species.artUrl,
+      gender: rollGender(species.genderRate),
+      ability: species.abilities.length > 0 ? pick(species.abilities) : "未知",
+      moveName: species.moveName,
+      movePower: species.movePower,
+      hp: species.hp,
+      attack: species.attack,
+      defense: species.defense,
+      speed: species.speed,
+      isShiny: Math.random() < SHINY_RATE,
+      refreshRound,
+    });
+  }
+  await prisma.dailyEncounter.createMany({ data: rows, skipDuplicates: true });
+}
+
+/**
+ * 花阳光刷新今天的遇怪。
+ *
+ * **已经抓到的那些保留**（今天的战果不该被刷掉），只替换没抓到和跑掉的。
+ * 两只都抓到了也允许刷——那时候它的意思是"再花钱多遇两只"，同样合理。
+ *
+ * 事务 + FOR UPDATE 锁 + 余额重查，写法同 throwBall / plantSeed：连点两次不会扣两次。
+ * 次数和价格都在事务里按当天最大的 refreshRound 重算，不采信页面传来的东西。
+ */
+export async function refreshEncounters(childId: string, dateString: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
+    const date = dateStringToUtcDate(dateString);
+
+    const todays = await tx.dailyEncounter.findMany({ where: { childId, date } });
+    const usedRounds = Math.max(0, ...todays.map((e) => e.refreshRound));
+    if (usedRounds >= MAX_REFRESHES_PER_DAY) {
+      throw new ActionError("今天的刷新次数用完啦，明天再来");
+    }
+    const cost = REFRESH_COSTS[usedRounds];
+
+    const balance = await tx.pointsLedger.aggregate({ where: { childId }, _sum: { amount: true } });
+    if ((balance._sum.amount ?? 0) < cost) throw new ActionError("阳光还不够哦");
+
+    await tx.pointsLedger.create({
+      data: {
+        childId,
+        amount: -cost,
+        reason: `刷新今天遇到的宝可梦（第 ${usedRounds + 1} 次）`,
+        type: LedgerType.POKEDEX_REFRESH,
+      },
+    });
+
+    // 抓到的留着，其余的换掉
+    const keep = todays.filter((e) => e.status === "CAUGHT");
+    await tx.dailyEncounter.deleteMany({
+      where: { childId, date, status: { not: "CAUGHT" } },
+    });
+    const nextSlot = Math.max(-1, ...todays.map((e) => e.slot)) + 1;
+
+    return { round: usedRounds + 1, cost, keptCaught: keep.length, nextSlot };
+  }).then(async (r) => {
+    // 建新遇怪放在事务外：createEncounters 自己要查图鉴库和已拥有种类，
+    // 塞进事务会把锁持有时间拉长，而这一步失败最多是"刷了没出新的"，刷新一下页面就补上了。
+    await createEncounters(childId, dateString, DAILY_ENCOUNTER_COUNT, r.round, r.nextSlot);
+    return r;
+  });
+}
+
+/**
+ * 朝**指定的那只**扔一个球。
  *
  * 事务内 + 对 Child 行加 FOR UPDATE 锁 + 重新聚合余额，写法和 lib/garden.ts 的
  * plantSeed 完全一致——孩子连点两次不能扣两次阳光。
- * 成功率和保底都在事务里算，不采信页面传来的任何东西。
+ * 成功率、剩余次数、保底都在事务里重算，不采信页面传来的任何东西。
  */
-export async function throwBall(ballTypeId: string, childId: string): Promise<ThrowResult> {
+export async function throwBall(
+  encounterId: string,
+  ballTypeId: string,
+  childId: string
+): Promise<ThrowResult> {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
 
@@ -144,6 +360,21 @@ export async function throwBall(ballTypeId: string, childId: string): Promise<Th
     const ball = await tx.ballType.findUnique({ where: { id: ballTypeId } });
     if (!ball || ball.childId !== childId || !ball.active) {
       throw new ActionError("这种精灵球现在买不了");
+    }
+
+    // 目标必须是今天名单里、还没被抓到/跑掉、且还有机会的那只
+    const encounter = await tx.dailyEncounter.findUnique({ where: { id: encounterId } });
+    if (!encounter || encounter.childId !== childId) {
+      throw new ActionError("找不到这只宝可梦");
+    }
+    if (formatStoredDate(encounter.date) !== todayDateString()) {
+      throw new ActionError("这只是以前遇到的，今天遇不到啦");
+    }
+    if (encounter.status !== "AVAILABLE") {
+      throw new ActionError(encounter.status === "CAUGHT" ? "已经抓到啦" : "它已经跑掉了");
+    }
+    if (encounter.attemptsUsed >= MAX_ATTEMPTS_PER_ENCOUNTER) {
+      throw new ActionError("这只的机会用完了");
     }
 
     const balanceResult = await tx.pointsLedger.aggregate({
@@ -164,12 +395,9 @@ export async function throwBall(ballTypeId: string, childId: string): Promise<Th
       },
     });
 
-    // 遇到一只：先按这个球的遇怪表摇稀有度档，再在那一档里随机挑一只
-    const rarity = rollRarity(ball.tier);
-    const pool = await tx.pokemonSpecies.findMany({ where: { rarity } });
-    // 理论上不会空（151 只四档都有），真空了就退回全库，别让孩子白花阳光
-    const species = pick(pool.length > 0 ? pool : await tx.pokemonSpecies.findMany());
-    if (!species) throw new ActionError("图鉴还没准备好，请家长先导入宝可梦数据");
+    // 目标就是名单上那只，属性在"遇到"时已经摇好了——孩子看到什么就会抓到什么
+    const species = encounter;
+    const attemptsLeft = MAX_ATTEMPTS_PER_ENCOUNTER - encounter.attemptsUsed - 1;
 
     const isMaster = ball.tier === BallTier.MASTER;
     const missStreak = child.catchMissStreak;
@@ -177,51 +405,76 @@ export async function throwBall(ballTypeId: string, childId: string): Promise<Th
     const byPity = !isMaster && missStreak >= PITY_GUARANTEE_AT;
 
     if (Math.random() >= probability) {
-      await tx.child.update({
-        where: { id: childId },
-        data: { catchMissStreak: missStreak + 1 },
-      });
       const nextStreak = missStreak + 1;
+      await tx.child.update({ where: { id: childId }, data: { catchMissStreak: nextStreak } });
+      // 机会用完就真的跑了；还有机会的话留在名单上，孩子可以换更好的球再试
+      await tx.dailyEncounter.update({
+        where: { id: encounter.id },
+        data: {
+          attemptsUsed: encounter.attemptsUsed + 1,
+          status: attemptsLeft <= 0 ? "FLED" : "AVAILABLE",
+        },
+      });
+
+      const notes: Annotated[] = [];
+      if (attemptsLeft > 0) {
+        notes.push(annotate(`还剩 ${attemptsLeft} 次机会，可以换个好一点的球`));
+      } else {
+        notes.push(annotate("机会用完了，明天会遇到新的宝可梦"));
+      }
       const guaranteedIn = Math.max(0, PITY_GUARANTEE_AT - nextStreak);
+      if (species.rarity < 4) {
+        notes.push(
+          annotate(
+            guaranteedIn > 0
+              ? `下次运气 +${Math.round(nextStreak * PITY_BONUS_PER_MISS * 100)}%`
+              : "下一次一定抓得到！"
+          )
+        );
+      }
       return {
         outcome: "FLED",
         rarity: species.rarity,
         artUrl: species.artUrl,
-        title: annotate(`${species.nameZh} 跑掉了`),
-        notes: [
-          annotate(
-            guaranteedIn > 0
-              ? `下次运气 +${Math.round(nextStreak * PITY_BONUS_PER_MISS * 100)}%，再失败 ${guaranteedIn} 次一定抓到`
-              : "下一次一定抓得到！"
-          ),
-        ],
+        title: annotate(attemptsLeft > 0 ? `${species.nameZh} 挣脱了` : `${species.nameZh} 跑掉了`),
+        notes,
       };
     }
 
-    // 抓到了。所有展示字段都快照下来，之后图鉴库更新也不影响这一只。
+    // 抓到了。是不是重复必须在插入之前判断——插完就分不清哪只是新的了。
+    const alreadyOwned = await tx.caught.findFirst({
+      where: { childId, speciesId: species.speciesId, status: CaughtStatus.OWNED },
+      select: { id: true },
+    });
+
+    // 所有展示字段都快照下来，之后图鉴库更新也不影响这一只。
     await tx.caught.create({
       data: {
         childId,
-        speciesId: species.id,
+        speciesId: species.speciesId,
         nameZh: species.nameZh,
         types: species.types,
         rarity: species.rarity,
         artUrl: species.artUrl,
-        gender: rollGender(species.genderRate),
-        ability: species.abilities.length > 0 ? pick(species.abilities) : "未知",
+        gender: species.gender,
+        ability: species.ability,
         moveName: species.moveName,
         movePower: species.movePower,
         hp: species.hp,
         attack: species.attack,
         defense: species.defense,
         speed: species.speed,
-        isShiny: Math.random() < SHINY_RATE,
+        isShiny: species.isShiny,
         ballTypeId: ball.id,
         ballTier: ball.tier,
         caughtOnDate: todayAsUtcDate(),
       },
     });
     await tx.child.update({ where: { id: childId }, data: { catchMissStreak: 0 } });
+    await tx.dailyEncounter.update({
+      where: { id: encounter.id },
+      data: { attemptsUsed: encounter.attemptsUsed + 1, status: "CAUGHT" },
+    });
 
     // 里程碑按**不同种类**数算，重复抓同一只不推进进度
     const distinct = await tx.caught.findMany({
@@ -252,7 +505,55 @@ export async function throwBall(ballTypeId: string, childId: string): Promise<Th
       }
     }
 
+    // 重复的按稀有度返还一点阳光，让每一次成功都值点什么（见 DUPLICATE_REFUND）
+    let refund = 0;
+    if (alreadyOwned) {
+      refund = DUPLICATE_REFUND[species.rarity] ?? 0;
+      if (refund > 0) {
+        await tx.pointsLedger.create({
+          data: {
+            childId,
+            amount: refund,
+            reason: `重复的${species.nameZh}，换成阳光`,
+            type: LedgerType.POKEDEX_DUPLICATE,
+          },
+        });
+      }
+    }
+
+    // 同一种攒够了 → 这一种收集完成，发一次奖励。
+    // 幂等靠 reason 里的标记：放生又抓回来凑到同一个数也不会重复发（同下面按种类数的里程碑）。
+    const sameSpeciesCount = await tx.caught.count({
+      where: { childId, speciesId: species.speciesId, status: CaughtStatus.OWNED },
+    });
+    const goal = masteryGoal(species.rarity);
+    let mastery: { bonus: number } | null = null;
+    if (sameSpeciesCount >= goal) {
+      const marker = `${species.nameZh} 收集完成`;
+      const already = await tx.pointsLedger.findFirst({
+        where: { childId, type: LedgerType.POKEDEX_BONUS, reason: { startsWith: marker } },
+      });
+      if (!already) {
+        const bonus = SPECIES_MASTERY_BONUS[species.rarity] ?? 40;
+        await tx.pointsLedger.create({
+          data: {
+            childId,
+            amount: bonus,
+            reason: `${marker}（${goal} 只），收集奖励`,
+            type: LedgerType.POKEDEX_BONUS,
+          },
+        });
+        mastery = { bonus };
+      }
+    }
+
     const notes: Annotated[] = [];
+    if (mastery) {
+      notes.push(annotate(`${species.nameZh} 集满 ${goal} 只，奖励 ${mastery.bonus} 阳光！`));
+    }
+    if (refund > 0) {
+      notes.push(annotate(`已经有一只啦，这只换成 ${refund} 阳光`));
+    }
     if (byPity) notes.push(annotate("坚持了这么多次，这只是你应得的"));
     if (newMilestone) {
       notes.push(

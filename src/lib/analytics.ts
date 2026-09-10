@@ -52,10 +52,12 @@ function classify(type: LedgerType, amount: number): LedgerBucket {
     case "MONTHLY_BONUS":
     case "GARDEN_BONUS":
     case "POKEDEX_BONUS":
+    case "POKEDEX_DUPLICATE":
       return "EARN";
     case "REDEMPTION":
     case "PLANT_SEED":
     case "BALL_BUY": // 球扔出去就消耗掉了，抓没抓到都是花出去的
+    case "POKEDEX_REFRESH":
       return "SPEND";
     case "TASK_REVOKE":
       return "REVERSAL";
@@ -73,6 +75,7 @@ const EARN_LABELS: Partial<Record<LedgerType, string>> = {
   MANUAL_ADJUST: "家长手动加分",
   GARDEN_BONUS: "花园集齐奖励",
   POKEDEX_BONUS: "图鉴收集奖励",
+  POKEDEX_DUPLICATE: "重复宝可梦返还",
 };
 
 const REVERSAL_LABELS: Partial<Record<LedgerType, string>> = {
@@ -84,6 +87,7 @@ const SPEND_LABELS: Partial<Record<LedgerType, string>> = {
   REDEMPTION: "兑换礼物",
   PLANT_SEED: "种植物",
   BALL_BUY: "买精灵球",
+  POKEDEX_REFRESH: "刷新遇怪",
 };
 
 function toBuckets(

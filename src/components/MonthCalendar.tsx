@@ -281,7 +281,14 @@ export function MonthProgress({ summary }: { summary: MonthSummary }) {
         </p>
       </div>
 
-      {taskDays === 0 ? (
+      {!summary.bonus.eligible ? (
+        // 中途加入的月份：说清楚为什么不算，别让家长以为是 bug
+        <p className="text-sm text-slate-500">
+          {summary.bonus.reason === "TOO_SHORT"
+            ? `这个月是从 ${summary.bonus.startDate} 开始的，剩下的天数不够评满勤，从下个月开始算。`
+            : "这个月还没开始打卡。"}
+        </p>
+      ) : taskDays === 0 ? (
         <p className="text-sm text-slate-500">这个月还没有安排任务。</p>
       ) : (
         <>

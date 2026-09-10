@@ -15,9 +15,9 @@ import "dotenv/config";
 import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
-import { todayAsUtcDate } from "../src/lib/date";
+import { todayAsUtcDate, todayDateString } from "../src/lib/date";
 import { plantSeed } from "../src/lib/garden";
-import { throwBall } from "../src/lib/pokedex";
+import { ensureTodayEncounters, throwBall } from "../src/lib/pokedex";
 import { fulfillRedemption, redeemReward } from "../src/lib/rewards";
 import { adjustPointsManually } from "../src/lib/points";
 import { approveDailyTask, createAdhocTask, revokeDailyTaskCompletion } from "../src/lib/tasks";
@@ -68,12 +68,14 @@ async function createTenant(tag: string) {
   const reward = (await prisma.reward.findFirst({ where: { childId: child.id } }))!;
   const plantType = (await prisma.plantType.findFirst({ where: { childId: child.id } }))!;
   const ballType = (await prisma.ballType.findFirst({ where: { childId: child.id } }))!;
+  await ensureTodayEncounters(child.id, todayDateString());
+  const encounter = (await prisma.dailyEncounter.findFirst({ where: { childId: child.id } }))!;
 
   // 给点余额，否则"兑换失败"可能是因为阳光不够而不是因为归属校验，测试就失去意义了
   await adjustPointsManually(child.id, 1000, "隔离测试初始余额");
   const redemption = await redeemReward(reward.id, child.id);
 
-  return { user, child, task, reward, plantType, ballType, redemption };
+  return { user, child, task, reward, plantType, ballType, encounter, redemption };
 }
 
 async function main() {
@@ -88,13 +90,14 @@ async function main() {
   await mustReject("兑换 B 的礼物", () => redeemReward(B.reward.id, A.child.id));
   await mustReject("核销 B 的兑换单", () => fulfillRedemption(B.redemption.id, A.child.id));
   await mustReject("种 B 的植物品种", () => plantSeed(B.plantType.id, A.child.id));
-  await mustReject("用 B 的精灵球扔", () => throwBall(B.ballType.id, A.child.id));
+  await mustReject("用 B 的精灵球扔", () => throwBall(A.encounter.id, B.ballType.id, A.child.id));
+  await mustReject("扔 B 遇到的宝可梦", () => throwBall(B.encounter.id, A.ballType.id, A.child.id));
 
   console.log("\n反向再来一遍（防止只有单向做了校验）：");
   await mustReject("B 批准 A 的任务", () => approveDailyTask(A.task.id, B.child.id));
   await mustReject("B 兑换 A 的礼物", () => redeemReward(A.reward.id, B.child.id));
   await mustReject("B 种 A 的植物品种", () => plantSeed(A.plantType.id, B.child.id));
-  await mustReject("B 用 A 的精灵球扔", () => throwBall(A.ballType.id, B.child.id));
+  await mustReject("B 用 A 的精灵球扔", () => throwBall(B.encounter.id, A.ballType.id, B.child.id));
 
   console.log("\n各自操作自己的资源应该正常：");
   try {
@@ -114,6 +117,7 @@ async function main() {
     await prisma.$transaction([
       prisma.pointsLedger.deleteMany({ where: { childId: t.child.id } }),
       prisma.caught.deleteMany({ where: { childId: t.child.id } }),
+      prisma.dailyEncounter.deleteMany({ where: { childId: t.child.id } }),
       prisma.ballType.deleteMany({ where: { childId: t.child.id } }),
       prisma.redemption.deleteMany({ where: { childId: t.child.id } }),
       prisma.plant.deleteMany({ where: { childId: t.child.id } }),

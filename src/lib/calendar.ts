@@ -18,9 +18,74 @@ import {
  * 比例定在 80% 而不是更高：一年级孩子每天都达标不现实，30 天的月份要求 24 天达标、
  * 允许漏 6 天，够得着又不至于随便就拿到。定太高（比如 95%，一个月只能漏 1 天）
  * 会让奖励在月中就变成"反正拿不到了"，激励直接失效。
+ *
+ * 金额定在月任务收入的 20% 左右（日收入 25 × 30 天 = 750，取 150）。
+ * 之前是 100 而日收入只有 4，满勤奖占了月收入的 45%——那样日常任务的分值就没意义了，
+ * 孩子会觉得"每天做不做差别不大，反正月底有大头"。
  */
-export const MONTHLY_BONUS_POINTS = 100;
+export const MONTHLY_BONUS_POINTS = 150;
 export const MONTHLY_BONUS_RATIO = 0.8;
+
+/**
+ * 中途加入的孩子，第一个月至少要剩这么多天才计满勤奖，否则从下个月才开始算。
+ *
+ * 为什么要这条：孩子 28 号才建档，那个月只剩 3 天，按 80% 就是"3 天必须全达标"——
+ * 一天没做好整月就废了，第一次接触这个系统就先挨一记打击。宁可这个月不算，
+ * 让他从下个月干干净净地开始。剩 14 天以上才有足够的容错空间（80% 允许漏 2~3 天）。
+ */
+export const BONUS_MIN_FIRST_MONTH_DAYS = 14;
+
+export type BonusEligibility =
+  | { eligible: true; countFrom: string }
+  /** NOT_STARTED：孩子那时候还没开始 / TOO_SHORT：首月剩余天数不够，顺延到下月 */
+  | { eligible: false; reason: "NOT_STARTED" | "TOO_SHORT"; startDate: string };
+
+/**
+ * 这个月要不要算满勤奖、分母从哪天起算。
+ *
+ * - 孩子开始之前的月份：不算
+ * - 开始那个月：从**开始那天**起算（不是从 1 号），且剩余天数要 ≥ BONUS_MIN_FIRST_MONTH_DAYS
+ * - 之后的月份：整月都算
+ *
+ * startDate 是孩子在系统里的"第一天"，由 getChildStartDate 算出来。
+ */
+export function bonusEligibility(month: string, startDate: string): BonusEligibility {
+  const startMonth = startDate.slice(0, 7);
+  if (month < startMonth) return { eligible: false, reason: "NOT_STARTED", startDate };
+  if (month > startMonth) return { eligible: true, countFrom: `${month}-01` };
+
+  // 开始的那个月：数一下从开始那天到月底还剩几天（含当天）
+  const remaining = datesInMonth(month).filter((d) => d >= startDate).length;
+  if (remaining < BONUS_MIN_FIRST_MONTH_DAYS) {
+    return { eligible: false, reason: "TOO_SHORT", startDate };
+  }
+  return { eligible: true, countFrom: startDate };
+}
+
+/**
+ * 孩子在系统里的"第一天"：建档日，和最早一次**真正完成**的打卡里更早的那个。
+ *
+ * 为什么只看 DONE、不看所有 DailyTask：任务行是会被"看"出来的——家长在打卡记录页
+ * 点开某一天，ensureDailyTasksForDate 就会把那天的模板任务补生成出来（不然那天是空白的，
+ * 没有可补打卡的条目）。如果起算日看的是"最早的任务行"，家长随手点一下月初的某天，
+ * 满勤分母就被悄悄拉长了——正好和"照顾中途加入的孩子"这条规则相反。
+ *
+ * 用"最早完成的打卡"既贴合字面（打卡 = 真的打了卡），又不会被浏览行为影响；
+ * 家长真的去补打卡并批准了月初某天，那天本来也确实该算进去。
+ *
+ * 这里不存在"故意晚点开始好拿奖"的空子：起算点晚了，分子分母同时变小，比例要求不变。
+ */
+export async function getChildStartDate(child: { id: string; createdAt: Date }): Promise<string> {
+  const earliest = await prisma.dailyTask.findFirst({
+    where: { childId: child.id, status: TaskStatus.DONE },
+    orderBy: { date: "asc" },
+    select: { date: true },
+  });
+  const created = todayDateString(child.createdAt);
+  if (!earliest) return created;
+  const firstDone = formatStoredDate(earliest.date);
+  return firstDone < created ? firstDone : created;
+}
 
 /**
  * 算出某个月里"本来就该打卡"的日子。
@@ -31,9 +96,11 @@ export const MONTHLY_BONUS_RATIO = 0.8;
  * 更糟的是月底真正结算时，孩子少开几天 App 反而让分母变小、满勤奖变得更容易拿。
  *
  * 所以分母改成按模板 + 法定节假日日历现算：
- *   - 落在这个月、且不早于孩子建档那天（建档之前的日子不该算他头上）；
+ *   - 落在这个月、且不早于 countFrom（孩子开始之前的日子不该算他头上）；
  *   - 有任一启用中的模板在那天生效；
  *   - 或者那天实际有任务行（家长临时加的任务也得算进去）。
+ *
+ * countFrom 由 bonusEligibility 给出：平常月份是月初，孩子加入的那个月是他开始的那天。
  *
  * 已知局限（和回填逻辑一致）：用的是**当前**的模板配置，模板改过之后回头看历史月份，
  * 算出来的是"按现在的模板本该打几天"。模型里没存模板的版本历史，暂时接受。
@@ -41,21 +108,19 @@ export const MONTHLY_BONUS_RATIO = 0.8;
 export function scheduledTaskDates(
   month: string,
   templates: { scheduleType: ScheduleType; weekdays: number[] }[],
-  childCreatedAt: Date,
+  countFrom: string,
   datesWithRows: Iterable<string>
 ): Set<string> {
-  const since = todayDateString(childCreatedAt);
   const dates = new Set<string>();
 
-  // 按模板"推算"出来的日子要卡建档时间：孩子还没建档的日子不该凭空算他头上。
   for (const date of datesInMonth(month)) {
-    if (date < since) continue;
+    if (date < countFrom) continue;
     if (templates.some((t) => isTemplateDueOn(t, date))) dates.add(date);
   }
-  // 真实存在的任务行不卡建档时间：那天确实排了任务（可能是家长临时加的，也可能是导入的历史数据），
-  // 就是实打实的应打卡日，没有理由不算。
+  // 实际存在的任务行也算进来（家长临时加的、或者导入的历史数据），
+  // 但同样卡 countFrom —— 孩子还没开始的日子不该计入他的满勤分母。
   for (const date of datesWithRows) {
-    dates.add(date);
+    if (date >= countFrom) dates.add(date);
   }
   return dates;
 }
@@ -81,6 +146,8 @@ export type MonthSummary = {
   taskDays: number; // 这个月一共该打卡多少天（满勤率的分母，含还没到的日子）
   reachedDays: number; // 其中已经达标的天数
   remainingDays: number; // 应打卡日里还没过去的（今天及以后），用来判断满勤奖还有没有希望
+  /** 这个月算不算满勤奖，以及为什么不算（中途加入、剩余天数不够…） */
+  bonus: BonusEligibility;
   monthEarned: number;
   bonusRatio: number; // 需要达到的比例
   onTrackForBonus: boolean;
@@ -98,6 +165,7 @@ export async function getMonthSummary(
   child: { id: string; dailyGoalPoints: number; createdAt: Date },
   month: string
 ): Promise<MonthSummary> {
+  const eligibility = bonusEligibility(month, await getChildStartDate(child));
   const childId = child.id;
   const dates = datesInMonth(month);
   const monthStart = dateStringToUtcDate(dates[0]);
@@ -171,7 +239,11 @@ export async function getMonthSummary(
   });
 
   // 分母按模板现算，不是数已经落库的任务行——理由见 scheduledTaskDates 的注释。
-  const scheduled = scheduledTaskDates(month, templates, child.createdAt, byDate.keys());
+  // 不够格拿满勤奖的月份（孩子还没开始 / 首月剩余天数太少）分母直接置空，
+  // 页面就会显示"本月不计满勤奖"而不是一个够不到的目标。
+  const scheduled = eligibility.eligible
+    ? scheduledTaskDates(month, templates, eligibility.countFrom, byDate.keys())
+    : new Set<string>();
   const taskDays = scheduled.size;
   const reachedDays = days.filter((d) => scheduled.has(d.date) && d.reachedGoal).length;
   // 今天还没过完，仍算"还有机会达标"的一天
@@ -184,6 +256,7 @@ export async function getMonthSummary(
     taskDays,
     reachedDays,
     remainingDays,
+    bonus: eligibility,
     monthEarned: days.reduce((sum, d) => sum + d.earned, 0),
     bonusRatio: MONTHLY_BONUS_RATIO,
     onTrackForBonus: taskDays > 0 && reachedDays >= Math.ceil(taskDays * MONTHLY_BONUS_RATIO),
@@ -309,6 +382,17 @@ export async function settleMonthlyBonusForChild(child: {
       where: { childId, active: true },
       select: { scheduleType: true, weekdays: true },
     });
+    // 起算日在事务里重新取一次，保证发放和页面展示用的是同一套规则（只看已完成的打卡，
+    // 理由见 getChildStartDate）
+    const earliestTask = await tx.dailyTask.findFirst({
+      where: { childId, status: TaskStatus.DONE },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    });
+    const createdDay = todayDateString(locked.createdAt);
+    const startDate = earliestTask
+      ? [formatStoredDate(earliestTask.date), createdDay].sort()[0]
+      : createdDay;
 
     while (cursor < currentMonth) {
       const dates = datesInMonth(cursor);
@@ -336,7 +420,14 @@ export async function settleMonthlyBonusForChild(child: {
 
       // 分母同样按模板现算。要是拿"有任务行的天数"当分母，孩子少开几天 App
       // 就少几行记录、分母跟着缩水，反而更容易拿到满勤奖——正好奖励了不打卡。
-      const scheduled = scheduledTaskDates(cursor, templates, locked.createdAt, datesWithRows);
+      const elig = bonusEligibility(cursor, startDate);
+      if (!elig.eligible) {
+        // 中途加入、首月剩余天数不够的那种：这个月直接跳过，不发也不算失败
+        lastSettled = cursor;
+        cursor = addMonths(cursor, 1);
+        continue;
+      }
+      const scheduled = scheduledTaskDates(cursor, templates, elig.countFrom, datesWithRows);
       const taskDays = scheduled.size;
       // 用锁内重新读到的 locked，拿的是最新的达标线
       const reachedDays = [...scheduled].filter(

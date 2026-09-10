@@ -7,7 +7,7 @@ import {
   requireParentSession,
   type Session,
 } from "@/lib/auth";
-import { seedDefaultsForChild } from "@/lib/bootstrap";
+import { DEFAULT_DAILY_GOAL, seedDefaultsForChild } from "@/lib/bootstrap";
 import { prisma } from "@/lib/db";
 import { ActionError } from "@/lib/errors";
 
@@ -143,7 +143,9 @@ export async function createChildForCurrentUser(name: string) {
   for (let attempt = 0; attempt < 5 && !child; attempt++) {
     const slug = buildSlug(trimmed);
     if (await prisma.child.findUnique({ where: { slug } })) continue;
-    child = await prisma.child.create({ data: { name: trimmed, slug, userId: ownerId } });
+    child = await prisma.child.create({
+      data: { name: trimmed, slug, userId: ownerId, dailyGoalPoints: DEFAULT_DAILY_GOAL },
+    });
   }
   if (!child) throw new ActionError("生成孩子端链接失败，请重试");
 
