@@ -1,7 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { KidNavBar } from "@/components/KidNavBar";
+import { collectionNavItem } from "@/lib/theme";
 import { MonthCalendar, MonthProgress } from "@/components/MonthCalendar";
+import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
 import { getMonthSummary, settleMonthlyBonusForChild } from "@/lib/calendar";
 import { getChildBySlug } from "@/lib/child";
@@ -24,39 +26,42 @@ export default async function KidCalendarPage({
   if (!child) notFound();
 
   // 顺手结算月度满勤奖（幂等），孩子打开日历就能看到奖励到账。
-  await settleMonthlyBonusForChild(child.id);
+  await settleMonthlyBonusForChild(child);
 
   const [summary, balance] = await Promise.all([
-    getMonthSummary(child.id, month),
+    getMonthSummary(child, month),
     getPointsBalance(child.id),
   ]);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-3">
-        <h1 className="pixel-text-outline text-2xl font-bold text-white lg:text-4xl 2xl:text-5xl">
-          我的日历 📅
+    // 日历撑满整个页面、固定一屏，日历本身占据中间的全部剩余高度，格子尽量大。
+    <main className="pixel-sky-bg flex h-dvh w-full flex-col gap-3 overflow-hidden p-4 lg:gap-4 lg:p-6">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+          <Pinyin text="我的打卡日历" /> 📅
         </h1>
         <PointsBadge balance={balance} />
       </header>
 
-      <MonthProgress summary={summary} />
-      <MonthCalendar summary={summary} basePath={`/kid/${slug}/calendar`} />
-
-      <div className="flex gap-3">
-        <Link
-          href={`/kid/${slug}`}
-          className="pixel-btn flex flex-1 items-center justify-center gap-2 bg-nes-sky px-6 py-4 text-xl font-bold text-white"
-        >
-          ⬅️ 今日任务
-        </Link>
-        <Link
-          href={`/kid/${slug}/garden`}
-          className="pixel-btn flex flex-1 items-center justify-center gap-2 bg-nes-green px-6 py-4 text-xl font-bold text-white"
-        >
-          🌻 我的花园
-        </Link>
+      <div className="shrink-0">
+        <MonthProgress summary={summary} />
       </div>
+
+      <div className="mx-auto min-h-0 w-full max-w-xl flex-1 overflow-y-auto lg:max-w-2xl">
+        <MonthCalendar
+          summary={summary}
+          basePath={`/kid/${slug}/calendar`}
+          dayHref={(d) => `/kid/${slug}/day/${d}`}
+          big
+        />
+      </div>
+
+      <KidNavBar
+        items={[
+          { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
+          collectionNavItem(child.theme, slug),
+        ]}
+      />
     </main>
   );
 }

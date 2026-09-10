@@ -1,11 +1,9 @@
-import { neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import ws from "ws";
 
 import { PrismaClient } from "@/generated/prisma/client";
 
-// Node.js 环境下 Neon 的驱动走 WebSocket，需要提供实现（Node 21 及更早版本没有内置 WebSocket）。
-neonConfig.webSocketConstructor = ws;
+// 不需要 ws polyfill：Neon 驱动走 WebSocket，而 Node 22+ 和 Cloudflare Workers 都内置了
+// 全局 WebSocket。之前引 ws 是为了兼容老 Node，但它依赖 net/tls，在 Workers 上根本跑不起来。
 
 declare global {
   var __prisma: PrismaClient | undefined;

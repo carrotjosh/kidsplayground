@@ -1,0 +1,9 @@
+[Unit]
+Description=每 30 分钟刷新一次 DuckDNS 记录
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target

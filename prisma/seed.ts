@@ -1,53 +1,42 @@
 import "dotenv/config";
 
+import { hashPassword } from "../src/lib/auth";
+import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
 
+/**
+ * 开发用种子数据：一个家长账号 + 一个孩子 + 默认的任务模板/礼物/植物。
+ *
+ * Child.userId 是必填的（多租户下"无主的孩子"会绕过所有归属校验），
+ * 所以这里先保证有个账号，再把孩子挂上去。
+ * 默认数据调 lib/bootstrap 里那份，和家长在后台新建孩子走的是同一套。
+ */
+const DEV_EMAIL = "dev@example.com";
+const DEV_PASSWORD = "changeme123";
+
 async function main() {
+  // 已经有账号就复用第一个（通常是你自己的），不要凭空多造一个租户出来。
+  const existing = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  const user =
+    existing ??
+    (await prisma.user.create({
+      data: {
+        email: DEV_EMAIL,
+        passwordHash: await hashPassword(DEV_PASSWORD),
+        isSuperAdmin: true, // 系统第一个账号 = 运维者
+      },
+    }));
+
   const child = await prisma.child.upsert({
     where: { slug: "pengpeng-demo" },
     update: { name: "蓬蓬" },
-    create: {
-      name: "蓬蓬",
-      slug: "pengpeng-demo",
-    },
+    create: { name: "蓬蓬", slug: "pengpeng-demo", userId: user.id },
   });
 
-  const templateCount = await prisma.taskTemplate.count({ where: { childId: child.id } });
-  if (templateCount === 0) {
-    await prisma.taskTemplate.createMany({
-      data: [
-        { childId: child.id, title: "读书20分钟", emoji: "📖", points: 10, weekdays: [1, 2, 3, 4, 5] },
-        { childId: child.id, title: "口算10题", emoji: "🧮", points: 5, weekdays: [1, 2, 3, 4, 5] },
-        { childId: child.id, title: "预习课文", emoji: "📝", points: 5, weekdays: [0, 6] },
-      ],
-    });
-  }
+  await seedDefaultsForChild(child.id);
 
-  const rewardCount = await prisma.reward.count({ where: { childId: child.id } });
-  if (rewardCount === 0) {
-    await prisma.reward.createMany({
-      data: [
-        { childId: child.id, title: "看30分钟动画片", emoji: "📺", cost: 20 },
-        { childId: child.id, title: "一个小玩具", emoji: "🧸", cost: 50 },
-        { childId: child.id, title: "去游乐场玩一次", emoji: "🎠", cost: 100 },
-      ],
-    });
-  }
-
-  const plantTypeCount = await prisma.plantType.count({ where: { childId: child.id } });
-  if (plantTypeCount === 0) {
-    await prisma.plantType.createMany({
-      data: [
-        { childId: child.id, title: "向日葵", emoji: "🌻", cost: 15 },
-        { childId: child.id, title: "坚果墙", emoji: "🥜", cost: 20 },
-        { childId: child.id, title: "豌豆射手", emoji: "🟢", cost: 25 },
-        { childId: child.id, title: "樱桃炸弹", emoji: "🍒", cost: 35 },
-      ],
-    });
-  }
-
-  console.log(`Seeded child: ${child.name} (slug: ${child.slug})`);
-  console.log(`孩子端链接：/kid/${child.slug}`);
+  console.log(`账号：${user.email}${existing ? "（复用已有账号）" : `，初始密码 ${DEV_PASSWORD}`}`);
+  console.log(`孩子：${child.name}，孩子端链接 /kid/${child.slug}`);
 }
 
 main()

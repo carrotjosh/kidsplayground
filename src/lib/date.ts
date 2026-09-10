@@ -72,6 +72,17 @@ export function currentMonthString(now: Date = new Date()): string {
   return todayDateString(now).slice(0, 7);
 }
 
+/**
+ * YYYY-MM-DD 是否是真实存在的日期。不只看格式：还要往返一次
+ * （字符串 → Date → 字符串）确认没被 JS 的日期溢出规则悄悄修正掉，
+ * 这样 "2026-02-30" 这种格式合法但不存在的日期会被挡下来。
+ */
+export function isValidDateString(dateString: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return false;
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && formatStoredDate(date) === dateString;
+}
+
 /** YYYY-MM 是否是合法月份字符串。 */
 export function isValidMonthString(month: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
@@ -93,6 +104,14 @@ export function daysInMonth(month: string): number {
 /** 某个月 1 号是星期几（0=周日...6=周六），用于日历首行左侧留空。 */
 export function firstWeekdayOfMonth(month: string): number {
   return weekdayOfDateString(`${month}-01`);
+}
+
+const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 把 YYYY-MM-DD 格式化成「9月8日 星期二」，给孩子端展示当天日期用。 */
+export function formatDateWithWeekday(dateString: string): string {
+  const [, m, d] = dateString.split("-").map(Number);
+  return `${m}月${d}日 星期${WEEKDAY_CN[weekdayOfDateString(dateString)]}`;
 }
 
 /** 列出某个月的全部日期字符串：["2026-09-01", ..., "2026-09-30"]。 */

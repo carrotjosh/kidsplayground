@@ -10,22 +10,80 @@ datasource db {
   provider = "postgresql"
 }
 
-// 孩子档案。第一版只会有一条记录，但为未来多个孩子的场景预留了外键结构。
+// 家长账号。系统开放邀请码注册后会有多个，每个账号是一个独立租户，
+// 名下的孩子和一切数据都靠 Child.userId 隔离。
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  // 运维用：能查看和代管其它账号的数据。只有系统第一个账号默认为 true。
+  // 故意不写进会话令牌——改权限后旧令牌就该立刻失效，每次校验都查库。
+  isSuperAdmin Boolean  @default(false)
+  /**
+   * 推送 webhook 地址，孩子提交待审核 / 申请兑换时往这里发一条通知。
+   * 存在 User 上而不是环境变量里：多租户下每个家长要推到自己的微信，
+   * 全局一个地址会把朋友家的动静推到运维者手机上。
+   */
+  notifyWebhookUrl String?
+  createdAt    DateTime @default(now())
+
+  children Child[]
+
+  invitesCreated InviteCode[] @relation("InviteCreator")
+  invitedBy      InviteCode?  @relation("InviteConsumer")
+}
+
+// 邀请码。**一次性**：用掉就作废，想邀请几个朋友就生成几个。
+//
+// 为什么从环境变量搬到库里：env 改一次要重新部署，做不到"点一下生成一个"。
+// 一次性也比"一个码反复轮换"好用——同时邀请三个朋友时不用等前一个注册完，
+// 而且事后能看出每个码是谁用掉的。
+model InviteCode {
+  id   String @id @default(cuid())
+  code String @unique
+
+  createdAt   DateTime @default(now())
+  createdById String // 哪个超管生成的
+  createdBy   User     @relation("InviteCreator", fields: [createdById], references: [id])
+
+  // 用掉之后记下时间和用的人。usedByUserId 唯一：一个账号只可能由一个码带进来。
+  usedAt       DateTime?
+  usedByUserId String?   @unique
+  usedBy       User?     @relation("InviteConsumer", fields: [usedByUserId], references: [id])
+
+  @@index([createdById])
+}
+
+// 孩子档案。一个家长账号可以有多个孩子（二胎家庭），后台用"当前孩子"Cookie 切换。
 model Child {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())
 
+  // 必填：多租户下"无主的孩子"是个危险状态——任何归属校验都会漏掉它。
+  // （历史上这里可空，是为了兼容"环境变量密码时代"遗留的数据，现在已经没有那种记录了。）
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
   // 花园夜间结算的游标：已经判定过僵尸攻击的最后一天。为空表示从没结算过。
   // 懒结算函数从这个日期的次日开始，逐天判定到"昨天"为止（"今天"永远不判，因为还没过完）。
   gardenSettledThrough DateTime? @db.Date
 
   // 每日达标线：当天已批准的任务加起来达到这么多阳光，这一天就算"打卡成功"（日历上点亮、计入满勤）。
-  dailyGoalPoints Int @default(10)
+  // 默认 20 配合默认任务的每天满分 25——漏掉最小的那项仍然算达标（见 lib/bootstrap.ts）。
+  dailyGoalPoints Int @default(20)
 
   // 月度满勤奖结算游标：已经结算过奖励的最后一个月（存该月 1 号）。为空表示从没结算过。
   bonusSettledThrough DateTime? @db.Date
+
+  // 当前玩法主题。上面的 gardenSettledThrough 是两个主题共用的"纪律结算游标"
+  // （名字是历史遗留）——主题互斥，同一个孩子只会跑其中一套结算。
+  theme KidTheme @default(GARDEN)
+
+  // 抓宝可梦的保底计数器：每失败一次 +1，成功清零。连续失败到一定次数必中，
+  // 免得一年级孩子攒了一周的阳光连着空手、直接放弃。
+  catchMissStreak Int @default(0)
 
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
@@ -34,11 +92,31 @@ model Child {
   redemptions   Redemption[]
   plantTypes    PlantType[]
   plants        Plant[]
+  encounters    DailyEncounter[]
+  ballTypes     BallType[]
+  caught        Caught[]
+
+  @@index([userId])
+}
+
+// 孩子端的玩法主题。一个孩子只跑一套：阳光全投在一个玩法里，经济才不会被摊薄，
+// 「任务没完成」的惩罚也只作用于一边。换主题时旧数据都保留，切回去还在。
+enum KidTheme {
+  GARDEN // 植物大战僵尸：种植物、僵尸吃植物、集齐一套收获
+  POKEDEX // 宝可梦：买精灵球抓宝可梦、没完成任务就有宝可梦离家出走
 }
 
 enum TaskSource {
   TEMPLATE
   ADHOC
+}
+
+// 任务模板在哪些日子生效：
+// WEEKDAYS 按星期几（用 weekdays 数组）/ WORKDAY 法定工作日（含调休补班）/ HOLIDAY 法定节假日
+enum ScheduleType {
+  WEEKDAYS
+  WORKDAY
+  HOLIDAY
 }
 
 // PENDING：待完成
@@ -59,6 +137,11 @@ enum LedgerType {
   TASK_REVOKE
   PLANT_SEED // 种植物消耗的阳光；僵尸吃掉植物不产生流水，因为阳光在"种下"时已经扣过
   MONTHLY_BONUS // 月度满勤奖励
+  GARDEN_BONUS // 花园集齐一整套后，一次性收获的阳光奖励
+  BALL_BUY // 买精灵球消耗的阳光；抓不到也不退，宝可梦离家出走同样不产生流水
+  POKEDEX_BONUS // 图鉴收集到里程碑的奖励
+  POKEDEX_DUPLICATE // 抓到已经有的宝可梦，按稀有度返还一点阳光
+  POKEDEX_REFRESH // 花阳光刷新今天遇到的宝可梦
 }
 
 enum RedemptionStatus {
@@ -66,12 +149,13 @@ enum RedemptionStatus {
   FULFILLED
 }
 
-// ALIVE：植物还活着 / EATEN：已被僵尸吃掉。
+// ALIVE：植物还活着 / EATEN：已被僵尸吃掉 / HARVESTED：花园集齐一整套后被一次性收走换成阳光。
 // 不用 DB 唯一约束限制"同一格子同时只能有一条记录"，而是查询时用 status = ALIVE
-// 过滤出"当前占用中的格子"，这样格子被吃空后可以重新种，同时保留完整历史（同 DailyTask/Redemption 的做法）。
+// 过滤出"当前占用中的格子"，这样格子被吃空/被收获后可以重新种，同时保留完整历史（同 DailyTask/Redemption 的做法）。
 enum PlantStatus {
   ALIVE
   EATEN
+  HARVESTED
 }
 
 // 周期性任务模板，家长维护。
@@ -79,10 +163,16 @@ model TaskTemplate {
   id        String   @id @default(cuid())
   childId   String
   child     Child    @relation(fields: [childId], references: [id])
+  // title 是"主题+数值+单位"拼出来的完整名字，给流水说明、家长端列表这类纯文本场景用；
+  // 孩子端卡片则分别渲染下面三个字段，主题一行、数值+单位一行，不会挤成一团。
   title     String
+  subject   String? // 主题，比如"读书"
+  amount    Int? // 数值，比如 20
+  unit      String? // 单位，比如"分钟"
   emoji     String?
   points    Int
-  weekdays  Int[] // 0=周日 ... 6=周六
+  scheduleType ScheduleType @default(WEEKDAYS)
+  weekdays  Int[] // 只在 scheduleType = WEEKDAYS 时有意义。0=周日 ... 6=周六
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,12 +189,18 @@ model DailyTask {
   childId     String
   child       Child      @relation(fields: [childId], references: [id])
   date        DateTime   @db.Date
+  // 同 TaskTemplate：title 是拼好的完整名字，subject/amount/unit 供孩子端分行展示。
   title       String
+  subject     String?
+  amount      Int?
+  unit        String?
   emoji       String?
   points      Int
   source      TaskSource
   templateId  String?
-  template    TaskTemplate? @relation(fields: [templateId], references: [id])
+  // onDelete: SetNull —— 家长删除模板时，已经生成的历史任务要保留（title/points 都有快照），
+  // 只是断开和模板的关联，不能因为删模板把孩子的打卡历史一起删掉。
+  template    TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status      TaskStatus @default(PENDING)
   completedAt DateTime?
   createdAt   DateTime   @default(now())
@@ -137,7 +233,7 @@ model PointsLedger {
   @@index([childId, createdAt])
 }
 
-// 礼物清单，家长维护，不做库存管理。
+// 礼物清单，家长维护，不做库存管理，但可以限制兑换频率。
 model Reward {
   id        String   @id @default(cuid())
   childId   String
@@ -145,6 +241,9 @@ model Reward {
   title     String
   emoji     String?
   cost      Int
+  // 兑换冷却：距上次兑换要间隔多少天才能再换。null = 不限次数。
+  // 用"滚动天数"而不是自然周/月，规则对孩子更直观：上次换完就开始倒计时。
+  cooldownDays Int?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
@@ -158,8 +257,10 @@ model Redemption {
   id          String           @id @default(cuid())
   childId     String
   child       Child            @relation(fields: [childId], references: [id])
-  rewardId    String
-  reward      Reward           @relation(fields: [rewardId], references: [id])
+  // 可空 + SetNull：家长删除礼物时，历史兑换记录要保留（名称和价格都有快照），
+  // 只是断开和礼物的关联，不能因为删礼物把孩子的兑换历史一起删掉。
+  rewardId    String?
+  reward      Reward?          @relation(fields: [rewardId], references: [id], onDelete: SetNull)
   rewardTitle String
   cost        Int
   status      RedemptionStatus @default(REQUESTED)
@@ -198,8 +299,10 @@ model Plant {
   id          String      @id @default(cuid())
   childId     String
   child       Child       @relation(fields: [childId], references: [id])
-  plantTypeId String
-  plantType   PlantType   @relation(fields: [plantTypeId], references: [id])
+  // 可空 + SetNull：家长删除植物品种时，历史植物记录要保留（title/emoji 都有快照），
+  // 只是断开和目录的关联。同 Redemption.rewardId 的做法。
+  plantTypeId String?
+  plantType   PlantType?  @relation(fields: [plantTypeId], references: [id], onDelete: SetNull)
   title       String
   emoji       String?
   slot        Int
@@ -210,6 +313,7 @@ model Plant {
   plantedOnDate DateTime? @db.Date
   eatenAt     DateTime?
   eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示
+  harvestedAt DateTime? // 花园集齐一整套后被一次性收走的时间；同一轮收获的植物共享同一个时间戳
   createdAt   DateTime    @default(now())
 
   ledgerEntry PointsLedger?
@@ -217,4 +321,166 @@ model Plant {
   @@index([childId, status])
   @@index([childId, slot])
   @@index([childId, plantedOnDate])
+}
+
+// ---------- 宝可梦图鉴主题 ----------
+
+// 图鉴参考库：从 PokéAPI 一次性灌进来，**全局共享、不属于任何 child**（这是公共资料，
+// 不是租户数据）。抓到的实例会把这里的字段整份快照到 Caught，所以以后这张表
+// 更新了、甚至 PokéAPI 挂了，都不影响孩子已经抓到的宝可梦怎么显示。
+model PokemonSpecies {
+  id     Int      @id // 全国图鉴编号
+  nameZh String
+  nameEn String
+  types  String[]
+
+  hp        Int
+  attack    Int
+  defense   Int
+  spAtk     Int
+  spDef     Int
+  speed     Int
+  statTotal Int // 六项之和，稀有度就是按它分档的
+
+  // 1 普通 / 2 少见 / 3 稀有 / 4 传说。
+  // 刻意不用 PokéAPI 的 capture_rate——那个表达的是原作里的抓取难度，
+  // 妙蛙种子是 45 会被误判成传说。用能力总和才符合"属性越厉害越稀有"。
+  rarity      Int
+  genderRate  Int // -1 无性别；0~8 表示母的比例 /8
+  isLegendary Boolean  @default(false)
+  abilities   String[] // 中文特性名
+  moveName    String // 招牌技能（中文）
+  movePower   Int
+  artUrl      String // 官方立绘，外链 PokeAPI 托管在 GitHub 上的图，仓库里不存副本
+
+  @@index([rarity])
+}
+
+// 精灵球等级。catchPower 越高越容易抓到；MASTER 必中。
+enum BallTier {
+  POKE
+  GREAT
+  ULTRA
+  MASTER
+}
+
+// 精灵球目录，每个孩子一份，家长可以改价/上下架。结构照抄 PlantType。
+model BallType {
+  id         String   @id @default(cuid())
+  childId    String
+  child      Child    @relation(fields: [childId], references: [id])
+  tier       BallTier
+  title      String
+  emoji      String?
+  cost       Int
+  catchPower Float // 抓取率倍率
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  caught Caught[]
+
+  @@index([childId])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+// OWNED：还在图鉴里 / FLED：任务没完成，离家出走了（对应花园里被僵尸吃掉的植物）
+enum CaughtStatus {
+  OWNED
+  FLED
+}
+
+// 每天遇到的宝可梦。AVAILABLE 还能扔球 / CAUGHT 抓到了 / FLED 机会用完跑了。
+enum EncounterStatus {
+  AVAILABLE
+  CAUGHT
+  FLED
+}
+
+// 今天遇到了哪几只。
+//
+// 为什么要落库而不是每次现摇：孩子看得到"今天出现了什么"才能决定用什么球，
+// 那这份名单就必须是稳定的——每次刷新重摇的话，他只要一直刷新就能刷出传说宝可梦。
+// @@unique([childId, date, slot]) + createMany skipDuplicates 保证一天只生成一次
+// （同 DailyTask 的做法）。
+//
+// 个体属性（性别/特性/技能/闪光）在**遇到时**就摇好存下来，不是抓到时才定：
+// 孩子看到的那只必须就是他抓到的那只，否则"看到闪光才舍得用大师球"这个决策就是假的。
+model DailyEncounter {
+  id      String   @id @default(cuid())
+  childId String
+  child   Child    @relation(fields: [childId], references: [id])
+  date    DateTime @db.Date
+  slot    Int
+
+  speciesId Int
+  nameZh    String
+  types     String[]
+  rarity    Int
+  artUrl    String
+
+  gender    Gender
+  ability   String
+  moveName  String
+  movePower Int
+  hp        Int
+  attack    Int
+  defense   Int
+  speed     Int
+  isShiny   Boolean @default(false)
+
+  attemptsUsed Int             @default(0)
+  status       EncounterStatus @default(AVAILABLE)
+  // 第几轮刷新出来的：0 是当天自动生成的那批，1~3 是花阳光刷出来的。
+  // "今天刷了几次" = 当天最大的 refreshRound，不用另存计数器，
+  // 也不受时区影响（date 是按中国时区算好的 @db.Date）。
+  refreshRound Int             @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@unique([childId, date, slot])
+  @@index([childId, date])
+}
+
+// 抓到的宝可梦实例。所有展示用字段都是快照（同 Plant / DailyTask 的做法）：
+// 图鉴库更新、家长改精灵球目录，都不该改变已经抓到的这只长什么样。
+model Caught {
+  id        String @id @default(cuid())
+  childId   String
+  child     Child  @relation(fields: [childId], references: [id])
+  speciesId Int
+
+  nameZh String
+  types  String[]
+  rarity Int
+  artUrl String
+
+  // 每只都是独立随机出来的，同一种宝可梦抓两只也不一样
+  gender    Gender
+  ability   String
+  moveName  String
+  movePower Int
+  hp        Int
+  attack    Int
+  defense   Int
+  speed     Int
+  isShiny   Boolean @default(false)
+
+  // 可空 + SetNull：家长删掉某种精灵球时，历史记录要保留
+  ballTypeId String?
+  ballType   BallType? @relation(fields: [ballTypeId], references: [id], onDelete: SetNull)
+  ballTier   BallTier
+
+  status       CaughtStatus @default(OWNED)
+  caughtAt     DateTime     @default(now())
+  // 按中国时区算的"抓到那一天"。单独存一列，夜间结算要按天判断
+  // "这天有没有抓到过"（抓到了就免疫离家出走），比 caughtAt 现算更省事也不易错。
+  caughtOnDate DateTime?    @db.Date
+  fledOnDate   DateTime?    @db.Date
+
+  @@index([childId, status])
+  @@index([childId, caughtOnDate])
 }

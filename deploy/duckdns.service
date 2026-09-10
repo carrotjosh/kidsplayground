@@ -1,0 +1,8 @@
+[Unit]
+Description=DuckDNS 动态域名更新
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/ubuntu/kid-checkin/deploy/duckdns.env
+ExecStart=/usr/bin/curl -fsS "https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip="

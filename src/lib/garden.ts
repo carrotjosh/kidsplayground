@@ -10,18 +10,124 @@ import {
 } from "@/lib/date";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
 
+/** 花园是 4×4 的格子。 */
+export const GARDEN_COLS = 4;
+export const GARDEN_ROWS = 4;
+export const GARDEN_SIZE = GARDEN_COLS * GARDEN_ROWS; // 16
+
+/** 一"套"= 每种植物要种够几棵。4 种植物 × 各 4 棵 = 16，正好铺满 4×4 的花园。 */
+export const GARDEN_SET_SIZE = 4;
+
 /**
- * 花园格子总数。选 12：
- * - 按最便宜植物 15 阳光、日常收入约 10~20 阳光估算，种满至少要连续攒十几天，不会一下子腻了；
- * - 也不至于"永远种不满"，让孩子完全不在意花园的完整度；
- * - 阳光和"攒钱换真实礼物"共享同一个货币池，12 格给了"偶尔种一棵、偶尔攒钱换礼物"的取舍空间，
- *   不会逼着孩子只能二选一。
+ * 集齐一整套后的收获倍率：把这一园植物**实际花掉的阳光**乘上这个数还给孩子。
+ *
+ * 为什么不是一个固定数字（原来写死 50）：植物价格是家长在后台随时能改的，
+ * 固定奖励一旦低于种满一园的总成本，孩子就是"花 76 换回 50"，理性的做法是永远不收获、
+ * 甚至永远不种——整个花园玩法就废了。按倍率算的话，奖励天然跟着成本走，改价也不会翻车。
+ *
+ * 1.5 的含义：种满一整套能连本带利拿回 150%。这不是白送——那些阳光在花园里是锁死的
+ * （不能拿去换礼物），而且任务没完成时僵尸会吃掉植物、那部分投入就亏了。
+ * 所以本质是"坚持打卡就能拿到的利息"，正好是想要的激励方向。
  */
-export const GARDEN_SIZE = 12;
+export const GARDEN_HARVEST_MULTIPLIER = 1.5;
+
+/**
+ * 算一园植物值多少收获奖励。
+ *
+ * 成本取的是当初那条 PLANT_SEED 流水（种下时真的扣了多少），不是植物目录上的现价——
+ * 家长中途改价、甚至把品种删了，都不该影响已经种下去的这些植物值多少钱。
+ * 万一流水缺失（比如脚本直接造的测试数据），退回用目录现价兜底。
+ */
+export function computeHarvestBonus(
+  plants: { ledgerEntry: { amount: number } | null; plantType: { cost: number } | null }[]
+): { spent: number; bonus: number } {
+  const spent = plants.reduce(
+    (sum, p) => sum + Math.abs(p.ledgerEntry?.amount ?? p.plantType?.cost ?? 0),
+    0
+  );
+  return { spent, bonus: Math.ceil(spent * GARDEN_HARVEST_MULTIPLIER) };
+}
 
 export type GardenEvent =
   | { date: string; outcome: "PLANT_EATEN"; plantTitle: string; plantEmoji: string | null }
   | { date: string; outcome: "GARDEN_EMPTY" };
+
+export type GardenProgressEntry = {
+  plantTypeId: string;
+  title: string;
+  emoji: string | null;
+  alive: number;
+  needed: number;
+};
+
+export type GardenProgress = {
+  entries: GardenProgressEntry[];
+  /** 每个上架品种都种够 GARDEN_SET_SIZE 棵 —— 可以收获了 */
+  complete: boolean;
+  /** 花园里还活着、但已经不属于当前目标的植物棵数（品种被家长下架或删掉了），它们照样占格子 */
+  strayAlive: number;
+  /** 一整套 + 那些占着格子的"编外"植物，能不能塞进 GARDEN_SIZE 个格子 */
+  achievable: boolean;
+  /** 现在园子里这些植物一共花了多少阳光 */
+  spent: number;
+  /** 现在收获能拿多少（集齐前也算出来给孩子看，知道攒下去值多少） */
+  bonus: number;
+};
+
+/**
+ * 从"上架中的植物品种"和"当前存活的植物"算出集卡进度。写成纯函数，
+ * 是为了让页面（已经查过这两份数据）和 harvestGarden（在事务里重新查一遍）能共用同一套判定，
+ * 不会出现"页面说能收，服务端说不能收"的分歧。
+ *
+ * 判定用的是"上架中"的品种：家长下架某种植物后，那一种就不再算进集卡目标里，
+ * 否则改了目录之后孩子的花园会永远集不齐。但已经种下的那几棵还活着、还占着格子，
+ * 所以要单独数出来（strayAlive）参与 achievable 的判断，不然会出现"目标看着能达成、
+ * 实际上格子不够"的死局。
+ */
+export function computeGardenProgress(
+  activeTypes: { id: string; title: string; emoji: string | null }[],
+  alivePlants: {
+    plantTypeId: string | null;
+    ledgerEntry?: { amount: number } | null;
+    plantType?: { cost: number } | null;
+  }[]
+): GardenProgress {
+  const activeIds = new Set(activeTypes.map((t) => t.id));
+  const aliveByType = new Map<string, number>();
+  let strayAlive = 0;
+  for (const plant of alivePlants) {
+    if (plant.plantTypeId && activeIds.has(plant.plantTypeId)) {
+      aliveByType.set(plant.plantTypeId, (aliveByType.get(plant.plantTypeId) ?? 0) + 1);
+    } else {
+      strayAlive += 1;
+    }
+  }
+
+  const entries = activeTypes.map((type) => ({
+    plantTypeId: type.id,
+    title: type.title,
+    emoji: type.emoji,
+    alive: aliveByType.get(type.id) ?? 0,
+    needed: GARDEN_SET_SIZE,
+  }));
+
+  const { spent, bonus } = computeHarvestBonus(
+    alivePlants.map((p) => ({
+      ledgerEntry: p.ledgerEntry ?? null,
+      plantType: p.plantType ?? null,
+    }))
+  );
+
+  return {
+    entries,
+    complete: entries.length > 0 && entries.every((e) => e.alive >= e.needed),
+    strayAlive,
+    achievable:
+      entries.length > 0 && entries.length * GARDEN_SET_SIZE + strayAlive <= GARDEN_SIZE,
+    spent,
+    bonus,
+  };
+}
 
 /**
  * 懒结算花园：从 gardenSettledThrough 的次日开始，逐天判定到"昨天"为止（今天永远不判，
@@ -142,8 +248,16 @@ export async function plantSeed(plantTypeId: string, childId: string) {
 
     const alivePlants = await tx.plant.findMany({
       where: { childId, status: PlantStatus.ALIVE },
-      select: { slot: true },
+      select: { slot: true, plantTypeId: true },
     });
+
+    // 每种最多 GARDEN_SET_SIZE 棵。不设这个上限的话，孩子种了 5 棵向日葵就再也凑不齐
+    // "4 种 × 各 4 棵 = 16 格"这一整套了（5+4+4+4 = 17 > 16），会走进一个自己解不开的死局。
+    const sameTypeAlive = alivePlants.filter((p) => p.plantTypeId === plantType.id).length;
+    if (sameTypeAlive >= GARDEN_SET_SIZE) {
+      throw new ActionError(`${plantType.title}已经种够 ${GARDEN_SET_SIZE} 棵啦，换一种试试`);
+    }
+
     const occupied = new Set(alivePlants.map((p) => p.slot));
     let freeSlot = -1;
     for (let i = 0; i < GARDEN_SIZE; i++) {
@@ -153,7 +267,7 @@ export async function plantSeed(plantTypeId: string, childId: string) {
       }
     }
     if (freeSlot === -1) {
-      throw new ActionError("花园已经种满了，先兑换一个礼物腾地方，或者等僵尸来访吧");
+      throw new ActionError("花园已经种满啦，去收获它换阳光吧");
     }
 
     const plant = await tx.plant.create({
@@ -179,5 +293,71 @@ export async function plantSeed(plantTypeId: string, childId: string) {
     });
 
     return plant;
+  });
+}
+
+/** 已经收获过几轮花园。用 GARDEN_BONUS 流水条数来数，不需要在 Child 上额外存一个计数字段。 */
+export async function getHarvestedRounds(childId: string): Promise<number> {
+  return prisma.pointsLedger.count({
+    where: { childId, type: LedgerType.GARDEN_BONUS },
+  });
+}
+
+/**
+ * 收获整座花园：集齐一整套（每种上架植物各 GARDEN_SET_SIZE 棵）之后，把所有植物一次性收走，
+ * 按 GARDEN_HARVEST_MULTIPLIER 连本带利换成阳光，花园清空、开始新一轮。
+ *
+ * 植物不删除，而是标成 HARVESTED —— 和"被僵尸吃掉"区分开，历史记录完整保留；
+ * 查"当前占用的格子"本来就只看 status = ALIVE，所以清空是自动的。
+ *
+ * 完成条件在事务内用 computeGardenProgress 重新算一遍（不信任页面传来的判断），
+ * 并对 Child 行加锁，避免连点两次收获两份奖励。
+ */
+export async function harvestGarden(childId: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
+
+    const [activeTypes, alivePlants, previousRounds] = await Promise.all([
+      tx.plantType.findMany({
+        where: { childId, active: true },
+        select: { id: true, title: true, emoji: true },
+      }),
+      tx.plant.findMany({
+        where: { childId, status: PlantStatus.ALIVE },
+        select: {
+          id: true,
+          plantTypeId: true,
+          // 算收获奖励要知道这些植物当初花了多少，见 computeHarvestBonus
+          ledgerEntry: { select: { amount: true } },
+          plantType: { select: { cost: true } },
+        },
+      }),
+      tx.pointsLedger.count({ where: { childId, type: LedgerType.GARDEN_BONUS } }),
+    ]);
+
+    const progress = computeGardenProgress(activeTypes, alivePlants);
+    if (!progress.complete) {
+      throw new ActionError("花园还没集齐，每种植物都要种够 4 棵才能收获");
+    }
+
+    const round = previousRounds + 1;
+    // 奖励在事务内按实际存活的这批植物重算，不采信页面传来的数字
+    const { spent, bonus } = computeHarvestBonus(alivePlants);
+
+    await tx.plant.updateMany({
+      where: { childId, status: PlantStatus.ALIVE },
+      data: { status: PlantStatus.HARVESTED, harvestedAt: new Date() },
+    });
+
+    await tx.pointsLedger.create({
+      data: {
+        childId,
+        amount: bonus,
+        reason: `花园集齐一整套，收获奖励（第 ${round} 轮，成本 ${spent} 阳光）`,
+        type: LedgerType.GARDEN_BONUS,
+      },
+    });
+
+    return { round, spent, bonus };
   });
 }

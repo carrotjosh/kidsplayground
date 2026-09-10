@@ -1,26 +1,34 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { PARENT_SESSION_COOKIE, isValidSessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/auth";
 
-// 家长后台的页面和它对应的 Server Action 都是同一个 /admin/* 路由下的 POST 请求，
-// 这一个 matcher 就同时覆盖了页面访问和表单提交两种情况。
+/**
+ * 路由守卫。系统上了公网，孩子端也必须登录才能看——光靠"不易猜的链接"不够了。
+ *   /admin/*  只有家长会话能进（孩子设备的受限会话会被踢回孩子端）
+ *   /kid/*    家长会话和孩子设备会话都能进
+ * 登录页、建号页放行。
+ *
+ * 这里只做粗粒度拦截，具体的数据归属校验在页面和 Server Action 里还会再做一遍
+ * （Next.js 官方明确建议不要只依赖 Proxy）。
+ */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const session = readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
 
-  if (pathname === "/admin/login") {
-    return NextResponse.next();
+  if (!session) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
   }
 
-  const token = request.cookies.get(PARENT_SESSION_COOKIE)?.value;
-  if (isValidSessionToken(token)) {
-    return NextResponse.next();
+  // 孩子的设备想进家长后台 → 送回孩子端
+  if (pathname.startsWith("/admin") && session.role !== "parent") {
+    return NextResponse.redirect(new URL("/kid", request.url));
   }
 
-  const loginUrl = new URL("/admin/login", request.url);
-  return NextResponse.redirect(loginUrl);
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/kid/:path*"],
 };

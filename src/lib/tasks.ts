@@ -1,6 +1,7 @@
-import { LedgerType, TaskSource, TaskStatus } from "@/generated/prisma/client";
+import { LedgerType, ScheduleType, TaskSource, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { getDayType } from "@/lib/holidays";
 import {
   dateStringToUtcDate,
   todayAsUtcDate,
@@ -15,6 +16,22 @@ type Db = {
   pointsLedger: typeof prisma.pointsLedger;
 };
 
+/** 判断某个模板在某一天生不生效。单独抽出来是为了让"这个月一共该打卡几天"能用同一套规则。 */
+export function isTemplateDueOn(
+  template: { scheduleType: ScheduleType; weekdays: number[] },
+  dateString: string
+): boolean {
+  switch (template.scheduleType) {
+    case ScheduleType.WORKDAY:
+      return getDayType(dateString).type === "WORKDAY";
+    case ScheduleType.HOLIDAY:
+      return getDayType(dateString).type === "HOLIDAY";
+    case ScheduleType.WEEKDAYS:
+    default:
+      return template.weekdays.includes(weekdayOfDateString(dateString));
+  }
+}
+
 /**
  * 确保某一天的周期任务已经落库成 DailyTask（幂等，靠 @@unique([childId, date, templateId])
  * + skipDuplicates）。既用于"今天"的懒生成，也用于夜间结算回填过去缺失的日子——否则孩子
@@ -22,11 +39,14 @@ type Db = {
  */
 export async function ensureDailyTasksForDate(db: Db, childId: string, dateString: string) {
   const date = dateStringToUtcDate(dateString);
-  const weekday = weekdayOfDateString(dateString);
 
-  const dueTemplates = await db.taskTemplate.findMany({
-    where: { childId, active: true, weekdays: { has: weekday } },
+  // 模板数量很少（家庭场景通常个位数），全部取出来在内存里按生效规则过滤，
+  // 比把"法定工作日/节假日"这种需要查日历表的判断塞进 SQL 简单可靠。
+  const activeTemplates = await db.taskTemplate.findMany({
+    where: { childId, active: true },
   });
+
+  const dueTemplates = activeTemplates.filter((t) => isTemplateDueOn(t, dateString));
 
   if (dueTemplates.length > 0) {
     await db.dailyTask.createMany({
@@ -34,6 +54,9 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
         childId,
         date,
         title: template.title,
+        subject: template.subject,
+        amount: template.amount,
+        unit: template.unit,
         emoji: template.emoji,
         points: template.points,
         source: TaskSource.TEMPLATE,
@@ -47,13 +70,60 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
 /**
  * 获取"今天"的任务列表：先按需把今天生效的周期性模板补齐成 DailyTask，
  * 再把模板任务和已有的临时任务一起返回。
+ *
+ * 性能：模板和今天已有的任务并行查（不互相依赖），只有在真的缺任务时才写库。
+ * 一天里第一次打开会是 3 次数据库往返，之后每次都只有 2 次——数据库在境外时
+ * 一次往返 200ms+，省一次就是省 200ms。
  */
 export async function getOrCreateTodayTasks(childId: string) {
   const dateString = todayDateString();
-  await ensureDailyTasksForDate(prisma, childId, dateString);
+  const date = todayAsUtcDate();
+  const weekday = weekdayOfDateString(dateString);
+  const { type: dayType } = getDayType(dateString);
+
+  const [activeTemplates, existing] = await Promise.all([
+    prisma.taskTemplate.findMany({ where: { childId, active: true } }),
+    prisma.dailyTask.findMany({ where: { childId, date }, orderBy: { createdAt: "asc" } }),
+  ]);
+
+  const dueTemplates = activeTemplates.filter((template) => {
+    switch (template.scheduleType) {
+      case ScheduleType.WORKDAY:
+        return dayType === "WORKDAY";
+      case ScheduleType.HOLIDAY:
+        return dayType === "HOLIDAY";
+      case ScheduleType.WEEKDAYS:
+      default:
+        return template.weekdays.includes(weekday);
+    }
+  });
+
+  const existingTemplateIds = new Set(existing.map((t) => t.templateId).filter(Boolean));
+  const missing = dueTemplates.filter((t) => !existingTemplateIds.has(t.id));
+
+  // 今天该有的模板任务都已经生成过了，直接返回，不用再写库、也不用重新查。
+  if (missing.length === 0) {
+    return existing;
+  }
+
+  await prisma.dailyTask.createMany({
+    data: missing.map((template) => ({
+      childId,
+      date,
+      title: template.title,
+      subject: template.subject,
+      amount: template.amount,
+      unit: template.unit,
+      emoji: template.emoji,
+      points: template.points,
+      source: TaskSource.TEMPLATE,
+      templateId: template.id,
+    })),
+    skipDuplicates: true,
+  });
 
   return prisma.dailyTask.findMany({
-    where: { childId, date: todayAsUtcDate() },
+    where: { childId, date },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -62,6 +132,9 @@ export async function createAdhocTask(params: {
   childId: string;
   date: Date;
   title: string;
+  subject?: string | null;
+  amount?: number | null;
+  unit?: string | null;
   emoji?: string | null;
   points: number;
 }) {
@@ -70,6 +143,9 @@ export async function createAdhocTask(params: {
       childId: params.childId,
       date: params.date,
       title: params.title,
+      subject: params.subject ?? null,
+      amount: params.amount ?? null,
+      unit: params.unit ?? null,
       emoji: params.emoji ?? null,
       points: params.points,
       source: TaskSource.ADHOC,

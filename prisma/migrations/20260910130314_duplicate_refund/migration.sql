@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "LedgerType" ADD VALUE 'POKEDEX_DUPLICATE';
