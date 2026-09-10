@@ -56,7 +56,7 @@ export function LoginForm() {
         {isPending ? "登录中..." : "登录"}
       </button>
 
-      {/* 注册要邀请码，没配 INVITE_CODE 时 /signup 会自己重定向回登录页 */}
+      {/* 注册要邀请码，没有未使用的码时 /signup 会自己重定向回登录页 */}
       <a href="/signup" className="text-center text-sm text-slate-500 underline">
         有邀请码？注册一个新账号
       </a>

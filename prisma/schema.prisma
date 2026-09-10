@@ -28,6 +28,30 @@ model User {
   createdAt    DateTime @default(now())
 
   children Child[]
+
+  invitesCreated InviteCode[] @relation("InviteCreator")
+  invitedBy      InviteCode?  @relation("InviteConsumer")
+}
+
+// 邀请码。**一次性**：用掉就作废，想邀请几个朋友就生成几个。
+//
+// 为什么从环境变量搬到库里：env 改一次要重新部署，做不到"点一下生成一个"。
+// 一次性也比"一个码反复轮换"好用——同时邀请三个朋友时不用等前一个注册完，
+// 而且事后能看出每个码是谁用掉的。
+model InviteCode {
+  id   String @id @default(cuid())
+  code String @unique
+
+  createdAt   DateTime @default(now())
+  createdById String // 哪个超管生成的
+  createdBy   User     @relation("InviteCreator", fields: [createdById], references: [id])
+
+  // 用掉之后记下时间和用的人。usedByUserId 唯一：一个账号只可能由一个码带进来。
+  usedAt       DateTime?
+  usedByUserId String?   @unique
+  usedBy       User?     @relation("InviteConsumer", fields: [usedByUserId], references: [id])
+
+  @@index([createdById])
 }
 
 // 孩子档案。一个家长账号可以有多个孩子（二胎家庭），后台用"当前孩子"Cookie 切换。

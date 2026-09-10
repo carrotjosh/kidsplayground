@@ -61,9 +61,6 @@ cd ~/kid-checkin
 cat > ~/kid-checkin/.env <<'EOF'
 DATABASE_URL="你的 Neon 新加坡连接串"
 SESSION_SECRET="用 openssl rand -hex 32 生成的随机串"
-# 想让朋友也能注册就加这一行（不加 = 注册关闭）。要够长，登录/注册目前没有限流。
-# 生成：node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
-INVITE_CODE="你的邀请码"
 EOF
 chmod 600 ~/kid-checkin/.env
 ```

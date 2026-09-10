@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getSession, requireSuperAdmin, setSessionCookie } from "@/lib/auth";
+import { createInviteCode, revokeInviteCode } from "@/lib/users";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 
@@ -42,4 +43,18 @@ export async function stopImpersonatingAction() {
   await setSessionCookie({ userId: session.userId, role: "parent" });
   revalidatePath("/admin", "layout");
   redirect("/admin");
+}
+
+/** 生成一个一次性邀请码。只有超管能点。 */
+export async function createInviteCodeAction() {
+  const session = await requireSuperAdmin();
+  await createInviteCode(session.userId);
+  revalidatePath("/admin/tenants");
+}
+
+/** 撤销一个还没用掉的邀请码（发错人了之类）。 */
+export async function revokeInviteCodeAction(id: string) {
+  await requireSuperAdmin();
+  await revokeInviteCode(id);
+  revalidatePath("/admin/tenants");
 }

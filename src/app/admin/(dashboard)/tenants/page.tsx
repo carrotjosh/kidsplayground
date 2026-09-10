@@ -1,7 +1,10 @@
 import { requireSuperAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
+import { listInviteCodes } from "@/lib/users";
+
 import { impersonateAction } from "./actions";
+import { InviteCodes } from "./InviteCodes";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,7 @@ export default async function TenantsAdminPage() {
   // 校验不过会抛 ActionError，由 (dashboard)/error.tsx 兜住。
   const session = await requireSuperAdmin();
 
+  const invites = await listInviteCodes();
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "asc" },
     include: {
@@ -39,6 +43,16 @@ export default async function TenantsAdminPage() {
         这些家庭的数据都存在你的数据库里。「以此账号身份查看」会让整个后台切换成对方的数据，
         用完记得点顶部横幅上的「退出代管」。别人的隐私对你是敞开的，建议提前告知他们。
       </p>
+
+      <InviteCodes
+        codes={invites.map((i) => ({
+          id: i.id,
+          code: i.code,
+          createdAt: formatDate(i.createdAt),
+          usedAt: i.usedAt ? formatDate(i.usedAt) : null,
+          usedByEmail: i.usedBy?.email ?? null,
+        }))}
+      />
 
       <div className="flex flex-col gap-3">
         {users.map((user) => {
