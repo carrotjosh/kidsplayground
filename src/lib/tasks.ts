@@ -168,7 +168,10 @@ export async function submitDailyTaskForReview(dailyTaskId: string, childId: str
   }
   return prisma.dailyTask.update({
     where: { id: dailyTaskId },
-    data: { status: TaskStatus.PENDING_REVIEW },
+    // submittedAt 记的是**孩子自己点"我完成了"**的时刻，和家长批准的 completedAt 是两回事。
+    // 自觉性面板要衡量的是孩子的行为：家长第二天早上才批，不代表孩子昨天没做。
+    // 家长直接对 PENDING 补打卡时这个字段保持 null——那正好就是"当天没有自觉做"。
+    data: { status: TaskStatus.PENDING_REVIEW, submittedAt: new Date() },
   });
 }
 

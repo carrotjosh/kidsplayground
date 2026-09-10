@@ -9,16 +9,17 @@ import { dateStringToUtcDate, todayDateString } from "@/lib/date";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { getPointsBalance } from "@/lib/points";
+import { dailyEarnRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
 import {
   catchProbability,
+  checkRegionUnlock,
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
-  POKEDEX_MILESTONE_BONUS,
   POKEDEX_MILESTONE_STEP,
   masteryGoal,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
-  REFRESH_COSTS,
+  regionCeiling,
   settlePokedexForChild,
 } from "@/lib/pokedex";
 
@@ -38,9 +39,22 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 懒结算：把欠下的"离家出走"判定补齐，返回这次新发生的事件做一次性提示
   const events = await settlePokedexForChild(child.id);
 
+  // 够条件就开新地区。**必须排在 ensureTodayEncounters 前面**——
+  // 放后面的话今天的名单已经按旧上限摇好了，新地区要等到明天才可能出现，
+  // "开放新地区"那个瞬间的惊喜就没了。
+  const unlocked = await checkRegionUnlock(child.id);
+
   // 今天遇到谁：一天只生成一次，刷新页面不会重摇（否则一直刷就能刷出传说）
   const today = todayDateString();
   await ensureTodayEncounters(child.id, today);
+
+  // 各种奖励金额都跟着日薪走（见 lib/economy.ts），家长改了任务模板会自动跟上
+  const rate = await dailyEarnRate(child.id);
+  const milestoneBonus = pokedexMilestoneBonus(rate);
+  // 收集进度的分母只算**已解锁地区**的宝可梦。用全库 386 当分母的话，
+  // 刚开始玩的孩子看到的是 3/386 的进度条，等于一上来就告诉他"你永远集不完"。
+  // 刚解锁的话 child 里还是旧值，用 checkRegionUnlock 返回的新上限
+  const ceiling = unlocked ? unlocked.ceiling : regionCeiling(child.pokedexRegion);
 
   const [caught, balls, balance, totalSpecies, encounters] = await Promise.all([
     prisma.caught.findMany({
@@ -52,7 +66,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       orderBy: { cost: "asc" },
     }),
     getPointsBalance(child.id),
-    prisma.pokemonSpecies.count(),
+    prisma.pokemonSpecies.count({ where: { id: { lte: ceiling } } }),
     prisma.dailyEncounter.findMany({
       where: { childId: child.id, date: dateStringToUtcDate(today) },
       orderBy: { slot: "asc" },
@@ -73,7 +87,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   }
   // 今天刷了几次 = 当天最大的 refreshRound（见 schema 里的注释）
   const refreshesUsed = Math.max(0, ...encounters.map((e) => e.refreshRound));
-  const nextRefreshCost = REFRESH_COSTS[Math.min(refreshesUsed, REFRESH_COSTS.length - 1)];
+  const costs = refreshCosts(rate);
+  const nextRefreshCost = costs[Math.min(refreshesUsed, costs.length - 1)];
 
   const deck = [...deckMap.values()];
   // 已经攒够数量、拿过"这一种收集完成"奖励的种数
@@ -92,6 +107,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </h1>
         <PointsBadge balance={balance} />
       </header>
+
+      {/* 新地区开放。这是分批解锁最主要的动机来源，位置放在最上面 */}
+      {unlocked && (
+        <p className="pixel-card kid-text bg-nes-yellow p-4 text-center text-slate-900 lg:p-5">
+          <Pinyin text={`🎉 ${unlocked.name}地区开放了！会遇到全新的宝可梦`} />
+        </p>
+      )}
 
       {/* 任务没完成，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
       {events.length > 0 && (
@@ -116,7 +138,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             <Pinyin text="种" />
           </p>
           <p className="kid-text text-sm text-slate-500 lg:text-base">
-            <Pinyin text={`再收集 ${toNextMilestone} 种，奖励 ${POKEDEX_MILESTONE_BONUS} 阳光`} /> 🏅
+            <Pinyin text={`再收集 ${toNextMilestone} 种，奖励 ${milestoneBonus} 阳光`} /> 🏅
           </p>
         </div>
         <div className="h-3 w-full border-2 border-nes-black bg-slate-100">

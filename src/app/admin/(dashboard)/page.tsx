@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DisciplinePanel } from "@/components/DisciplinePanel";
 import { MonthStatsPanel, MonthTrend } from "@/components/MonthStatsPanel";
 import { RedemptionStatus, TaskStatus } from "@/generated/prisma/client";
 import { getMonthStats, getRecentMonthsStats } from "@/lib/analytics";
@@ -7,6 +8,7 @@ import { settleMonthlyBonusForChild } from "@/lib/calendar";
 import { getPrimaryChild } from "@/lib/child";
 import { currentMonthString, formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
+import { getDisciplineStats } from "@/lib/discipline";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
@@ -18,19 +20,21 @@ export default async function AdminDashboardPage() {
   // 顺手结算月度满勤奖（幂等，重复调用不会重复发）。
   await settleMonthlyBonusForChild(child);
 
-  const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend] = await Promise.all([
-    getOrCreateTodayTasks(child.id),
-    getPointsBalance(child.id),
-    prisma.redemption.count({
-      where: { childId: child.id, status: RedemptionStatus.REQUESTED },
-    }),
-    prisma.dailyTask.findMany({
-      where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    }),
-    getMonthStats(child.id, currentMonthString()),
-    getRecentMonthsStats(child.id, 6),
-  ]);
+  const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend, discipline] =
+    await Promise.all([
+      getOrCreateTodayTasks(child.id),
+      getPointsBalance(child.id),
+      prisma.redemption.count({
+        where: { childId: child.id, status: RedemptionStatus.REQUESTED },
+      }),
+      prisma.dailyTask.findMany({
+        where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      }),
+      getMonthStats(child.id, currentMonthString()),
+      getRecentMonthsStats(child.id, 6),
+      getDisciplineStats(child.id, child.dailyGoalPoints),
+    ]);
 
   const doneCount = tasks.filter((t) => t.status === "DONE").length;
 
@@ -91,6 +95,7 @@ export default async function AdminDashboardPage() {
 
       {/* 数据分析：本月达标率 + 阳光收支构成，再加最近半年的趋势。
           日历本身在"打卡记录"页，这里只放看趋势用的统计。 */}
+      <DisciplinePanel stats={discipline} />
       <MonthStatsPanel stats={stats} />
       <MonthTrend months={trend} />
 

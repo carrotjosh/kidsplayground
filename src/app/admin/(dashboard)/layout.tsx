@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/admin/rewards", label: "礼物商店" },
   { href: "/admin/redemptions", label: "兑换记录" },
   { href: "/admin/children", label: "孩子档案" },
+  { href: "/admin/economy", label: "经济体检" },
   { href: "/admin/settings", label: "设置" },
 ];
 

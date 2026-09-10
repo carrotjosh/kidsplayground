@@ -1,5 +1,5 @@
 /**
- * 从 PokéAPI 把第一世代 151 只宝可梦灌进 PokemonSpecies 表。
+ * 从 PokéAPI 把前三个世代 386 只宝可梦灌进 PokemonSpecies 表。
  *
  * 用法：npm run db:seed-pokedex
  *
@@ -14,7 +14,17 @@ import "dotenv/config";
 
 import { prisma } from "../src/lib/db";
 
-const GEN1_COUNT = 151;
+/**
+ * 灌到全国图鉴第几号。386 = 前三世代（关都 151 + 城都 100 + 丰缘 135）。
+ *
+ * 为什么不是 151：模拟过 36 个月，只有一世代的话重度玩家 21 个月就集齐了，
+ * 之后扔球期望回报远低于球价，孩子没有任何理由再抓。386 只配合分批解锁
+ * （见 lib/pokedex.ts 的 REGIONS）能撑到六年以上。
+ *
+ * 也不是全部 1025 只：后面几代的形态和地区变种多，中文名和立绘的质量参差，
+ * 而且六年的跑道已经远超"用到自觉性形成"的预期。
+ */
+const SPECIES_COUNT = 386;
 const API = "https://pokeapi.co/api/v2";
 
 /** 简单的内存缓存 + 串行请求：特性和技能会被大量species 复用，不缓存要多打好几百次。 */
@@ -81,10 +91,10 @@ async function pickSignatureMove(moves: { move: Named }[], types: string[]) {
 }
 
 async function main() {
-  console.log(`从 PokéAPI 拉第一世代 ${GEN1_COUNT} 只...`);
+  console.log(`从 PokéAPI 拉前三世代 ${SPECIES_COUNT} 只...`);
   const rows = [];
 
-  for (let id = 1; id <= GEN1_COUNT; id++) {
+  for (let id = 1; id <= SPECIES_COUNT; id++) {
     const p = await get<{
       name: string;
       types: { type: Named }[];
@@ -138,7 +148,7 @@ async function main() {
         `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`,
     });
 
-    if (id % 25 === 0) console.log(`  ${id}/${GEN1_COUNT}...`);
+    if (id % 25 === 0) console.log(`  ${id}/${SPECIES_COUNT}...`);
   }
 
   // upsert 而不是 createMany：重复跑要能覆盖更新（比如以后调了稀有度公式）
@@ -154,8 +164,9 @@ async function main() {
   const LABEL = ["", "普通", "少见", "稀有", "传说"];
   console.log(`\n写入 ${rows.length} 只：`);
   for (const g of byRarity) console.log(`  ${LABEL[g.rarity]} ${g._count._all} 只`);
-  console.log(`\n随手挑一个立绘链接，拿国内网络的手机打开试试能不能显示：`);
-  console.log(`  ${rows[24].nameZh} → ${rows[24].artUrl}`);
+  // artUrl 存的是上游地址，页面上并不直接用它——CreatureCard 走的是自己的
+  // /pokemon-art/<id> 代理（raw.githubusercontent.com 在国内打不开，见 lib/pokemonArt.ts）。
+  console.log(`\n验证立绘：部署后用国内网络打开 /pokemon-art/25 应该能看到皮卡丘。`);
 }
 
 main()

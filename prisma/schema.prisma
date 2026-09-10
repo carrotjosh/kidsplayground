@@ -85,6 +85,17 @@ model Child {
   // 免得一年级孩子攒了一周的阳光连着空手、直接放弃。
   catchMissStreak Int @default(0)
 
+  // 图鉴已解锁到第几个地区：1 关都(1-151) / 2 城都(-251) / 3 丰缘(-386)。
+  // 不一次放出 386 只是为了把内容跑道拉长：一次性全开的话重度玩家 21 个月就集齐了，
+  // 分批解锁能撑到 6 年，而且每次开新地区本身就是一个强动机（见 lib/pokedex.ts 的 REGIONS）。
+  pokedexRegion Int @default(1)
+
+  // 现有这套价格（礼物/精灵球/植物）是按哪个"日薪"定的。
+  // 家长一改任务模板，日薪就变了，而目录里的绝对价格不会自己跟上——
+  // 存下基准值才能算出漂移了多少、一键校准该乘几倍（见 lib/economy.ts）。
+  // 默认 25 = lib/bootstrap.ts 默认任务模板的每日满分。
+  priceBaselineRate Int @default(25)
+
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
   ledgerEntries PointsLedger[]
@@ -202,6 +213,11 @@ model DailyTask {
   // 只是断开和模板的关联，不能因为删模板把孩子的打卡历史一起删掉。
   template    TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status      TaskStatus @default(PENDING)
+  // 孩子自己点"我完成了"的时间。和 completedAt 的区别很重要：
+  // completedAt 是**家长批准**的时间，家长第二天才批会让"孩子当天自觉做了"看起来像没做。
+  // 自觉性面板要衡量的是孩子的行为，所以必须单独记这一个。
+  // 家长直接对 PENDING 补打卡时这里是 null——那正好就是"当天没有自觉做"。
+  submittedAt DateTime?
   completedAt DateTime?
   createdAt   DateTime   @default(now())
 
