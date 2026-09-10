@@ -1,15 +1,18 @@
 import { Pinyin } from "@/components/Pinyin";
 import type { Gender } from "@/generated/prisma/client";
+import { pokemonArtPath } from "@/lib/pokemonArt";
 import { RARITY_LABELS } from "@/lib/rarity";
 
 /**
  * 宝可梦卡片，做成 PTCG 那种卡面：顶栏名字 + HP，中间立绘，下面属性/技能/特性，
  * 底部稀有度星级。卡框是我自己写的 CSS，没有用任何官方卡牌美术。
  *
- * 立绘是**外链** PokeAPI 托管在 GitHub 上的官方立绘（版权是任天堂/宝可梦公司的），
- * 仓库里不存副本。故意用原生 <img> 而不是 next/image：
- * next/image 会让我们自己的服务器去代理抓图再吐给浏览器，等于在服务端缓存了这些图，
- * 而且多绕一跳、还要配 remotePatterns。原生 img 是浏览器直连 GitHub，我们不碰图片。
+ * 立绘走 /pokemon-art/<id> 这个代理（见 lib/pokemonArt.ts）：官方立绘托管在
+ * raw.githubusercontent.com，**国内访问不了**，直连的话孩子那边全是裂图。
+ * 仓库里不存副本，服务端只做转发。
+ *
+ * 用原生 <img> 而不是 next/image：代理那一层已经带了 immutable 缓存头，
+ * 再套一层图片优化没有收益，还要额外配 remotePatterns。
  */
 
 /** 每个属性一个颜色，沿用大家熟悉的那套配色，孩子一眼能认出来。 */
@@ -50,10 +53,11 @@ const GENDER_COLOR: Record<Gender, string> = {
 };
 
 export type CreatureCardData = {
+  /** 用来拼立绘地址（走 /pokemon-art/<id> 代理） */
+  speciesId: number;
   nameZh: string;
   types: string[];
   rarity: number;
-  artUrl: string;
   gender: Gender;
   ability: string;
   moveName: string;
@@ -99,7 +103,7 @@ export function CreatureCard({
       <div className="relative flex aspect-square items-center justify-center border-2 border-nes-black bg-white">
         {/* eslint-disable-next-line @next/next/no-img-element -- 见文件头：故意直连外部图床，不走 next/image 代理 */}
         <img
-          src={creature.artUrl}
+          src={pokemonArtPath(creature.speciesId)}
           alt={creature.nameZh}
           loading="lazy"
           className="h-full w-full object-contain p-1"

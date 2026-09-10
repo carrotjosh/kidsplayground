@@ -157,7 +157,6 @@ export type ThrowResult =
   | {
       outcome: "CAUGHT";
       rarity: number;
-      artUrl: string;
       /** "抓到了！皮卡丘" */
       title: Annotated;
       /** 保底兜住 / 里程碑奖励之类的补充说明，没有就是空数组 */
@@ -166,14 +165,13 @@ export type ThrowResult =
   | {
       outcome: "FLED";
       rarity: number;
-      artUrl: string;
       /** "皮卡丘 跑掉了" */
       title: Annotated;
       notes: Annotated[];
     };
 
 export type PokedexEvent =
-  | { date: string; outcome: "FLED_AWAY"; nameZh: string; artUrl: string }
+  | { date: string; outcome: "FLED_AWAY"; nameZh: string }
   | { date: string; outcome: "NOTHING_TO_LOSE" };
 
 /** 按遇怪表随机挑一档稀有度。导出是为了能跑大样本模拟验证。 */
@@ -435,7 +433,6 @@ export async function throwBall(
       return {
         outcome: "FLED",
         rarity: species.rarity,
-        artUrl: species.artUrl,
         title: annotate(attemptsLeft > 0 ? `${species.nameZh} 挣脱了` : `${species.nameZh} 跑掉了`),
         notes,
       };
@@ -564,7 +561,6 @@ export async function throwBall(
     return {
       outcome: "CAUGHT",
       rarity: species.rarity,
-      artUrl: species.artUrl,
       title: annotate(`抓到了！${species.nameZh}`),
       notes,
     };
@@ -632,7 +628,6 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
             date: cursor,
             outcome: "FLED_AWAY",
             nameZh: chosen.nameZh,
-            artUrl: chosen.artUrl,
           });
         }
       }

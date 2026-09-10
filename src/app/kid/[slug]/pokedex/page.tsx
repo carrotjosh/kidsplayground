@@ -182,10 +182,10 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             balance={balance}
             encounters={encounters.map((e) => ({
               id: e.id,
+              speciesId: e.speciesId,
               nameZh: e.nameZh,
               types: e.types,
               rarity: e.rarity,
-              artUrl: e.artUrl,
               gender: e.gender,
               ability: e.ability,
               moveName: e.moveName,

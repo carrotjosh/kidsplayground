@@ -9,6 +9,7 @@ import type { BallTier } from "@/generated/prisma/client";
 // 只 import type：lib/pokedex 是服务端模块（链式依赖 chinese-days），
 // 引它的运行时值会把整条链拖进浏览器包。
 import type { ThrowResult } from "@/lib/pokedex";
+import { pokemonArtPath } from "@/lib/pokemonArt";
 import { RARITY_LABELS } from "@/lib/rarity";
 
 import { throwBallAction } from "./actions";
@@ -35,10 +36,10 @@ export type BallOption = {
 
 export type EncounterView = {
   id: string;
+  speciesId: number;
   nameZh: string;
   types: string[];
   rarity: number;
-  artUrl: string;
   gender: "MALE" | "FEMALE" | "UNKNOWN";
   ability: string;
   moveName: string;
@@ -134,9 +135,9 @@ function EncounterCard({
   return (
     <div className="pixel-card flex flex-col gap-3 bg-white p-4">
       <div className="flex gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- 外链官方立绘，不走 next/image 代理 */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- 走自己的 /pokemon-art 代理，见 lib/pokemonArt.ts */}
         <img
-          src={encounter.artUrl}
+          src={pokemonArtPath(encounter.speciesId)}
           alt=""
           className={`h-28 w-28 shrink-0 object-contain ${done && encounter.status === "FLED" ? "opacity-40 grayscale" : ""}`}
         />

@@ -47,6 +47,21 @@ INVITE_CODE="用 node -e \"console.log(require('crypto').randomBytes(24).toStrin
 > **不配置 = 注册关闭**。这是刻意的默认值：忘了配不会变成对全网开放注册。
 > 邀请码要够长——登录和注册目前都没有做限流，长随机码是现阶段防爆破的主要手段。
 
+### 宝可梦立绘（图鉴主题）
+
+立绘不存在仓库里，由应用代理转发：浏览器请求 `/pokemon-art/<id>`，服务端去
+PokeAPI 托管在 GitHub 上的官方立绘取图再转出来。
+
+**为什么要绕这一层**：`raw.githubusercontent.com` 在国内访问不了，直接外链的话
+孩子和朋友那边图片全是裂的。走自己的域名就没这个问题——应用域名本来就必须可达。
+
+万一哪天连服务器也取不到 GitHub，换个镜像只改一个环境变量：
+
+```bash
+# 可选，不配就用 GitHub 上的官方源
+POKEMON_ART_BASE="https://fastly.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork"
+```
+
 ### 1.2 安装依赖 & 初始化数据库
 
 ```bash
