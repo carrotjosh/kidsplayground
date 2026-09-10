@@ -72,6 +72,17 @@ export function currentMonthString(now: Date = new Date()): string {
   return todayDateString(now).slice(0, 7);
 }
 
+/**
+ * YYYY-MM-DD 是否是真实存在的日期。不只看格式：还要往返一次
+ * （字符串 → Date → 字符串）确认没被 JS 的日期溢出规则悄悄修正掉，
+ * 这样 "2026-02-30" 这种格式合法但不存在的日期会被挡下来。
+ */
+export function isValidDateString(dateString: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return false;
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && formatStoredDate(date) === dateString;
+}
+
 /** YYYY-MM 是否是合法月份字符串。 */
 export function isValidMonthString(month: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);

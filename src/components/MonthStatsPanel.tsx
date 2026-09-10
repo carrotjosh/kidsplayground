@@ -100,13 +100,37 @@ export function MonthStatsPanel({ stats }: { stats: MonthStats }) {
           </p>
         </div>
 
-        {/* 阳光收入 */}
+        {/* 阳光收入。撤销打卡、家长扣分算在这一栏里做减项，而不是算进"花掉"——
+            那些阳光根本没花出去，混进支出会让收支两边同时虚高。 */}
         <div className="pixel-card flex flex-col gap-3 bg-white p-5">
           <div className="flex items-baseline justify-between">
             <p className="text-sm text-slate-500">本月获得阳光</p>
             <p className="text-2xl font-bold text-emerald-600">+{stats.earned}</p>
           </div>
-          <Bar buckets={stats.earnedBuckets} total={stats.earned} tone="earn" />
+          <Bar buckets={stats.earnedBuckets} total={stats.earnedGross} tone="earn" />
+
+          {stats.reversed > 0 && (
+            <div className="flex flex-col gap-1 border-t border-slate-200 pt-2">
+              <p className="flex justify-between text-sm">
+                <span className="text-slate-500">扣减</span>
+                <span className="font-semibold text-slate-600">-{stats.reversed}</span>
+              </p>
+              <ul className="flex flex-col gap-0.5 text-xs text-slate-500">
+                {stats.reversedBuckets.map((b) => (
+                  <li key={b.label} className="flex justify-between gap-2">
+                    <span>
+                      {b.label}
+                      <span className="ml-1 text-slate-400">×{b.count}</span>
+                    </span>
+                    <span>-{b.amount}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-400">
+                毛收入 {stats.earnedGross} − 扣减 {stats.reversed} = 净得 {stats.earned}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 阳光支出 */}
@@ -116,6 +140,7 @@ export function MonthStatsPanel({ stats }: { stats: MonthStats }) {
             <p className="text-2xl font-bold text-nes-red">-{stats.spent}</p>
           </div>
           <Bar buckets={stats.spentBuckets} total={stats.spent} tone="spend" />
+          <p className="text-xs text-slate-400">只统计真正花出去的：兑换礼物、种植物。</p>
           <div className="flex flex-col gap-2 border-t border-slate-200 pt-2">
             <DetailList title="兑换了这些礼物" rows={stats.rewardDetail} />
             <DetailList title="种了这些植物" rows={stats.plantDetail} />

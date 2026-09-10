@@ -1,6 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { KidNavBar } from "@/components/KidNavBar";
+import { collectionNavItem } from "@/lib/theme";
 import { MonthCalendar, MonthProgress } from "@/components/MonthCalendar";
 import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
@@ -37,7 +38,7 @@ export default async function KidCalendarPage({
     <main className="pixel-sky-bg flex h-dvh w-full flex-col gap-3 overflow-hidden p-4 lg:gap-4 lg:p-6">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
-          <Pinyin text="我的日历" /> 📅
+          <Pinyin text="我的打卡日历" /> 📅
         </h1>
         <PointsBadge balance={balance} />
       </header>
@@ -47,23 +48,20 @@ export default async function KidCalendarPage({
       </div>
 
       <div className="mx-auto min-h-0 w-full max-w-xl flex-1 overflow-y-auto lg:max-w-2xl">
-        <MonthCalendar summary={summary} basePath={`/kid/${slug}/calendar`} big />
+        <MonthCalendar
+          summary={summary}
+          basePath={`/kid/${slug}/calendar`}
+          dayHref={(d) => `/kid/${slug}/day/${d}`}
+          big
+        />
       </div>
 
-      <div className="flex shrink-0 gap-3">
-        <Link
-          href={`/kid/${slug}`}
-          className="pixel-btn kid-text flex flex-1 items-center justify-center gap-2 bg-nes-sky py-3 text-xl text-white lg:text-2xl"
-        >
-          ⬅️ <Pinyin text="今日任务" />
-        </Link>
-        <Link
-          href={`/kid/${slug}/garden`}
-          className="pixel-btn kid-text flex flex-1 items-center justify-center gap-2 bg-nes-green py-3 text-xl text-white lg:text-2xl"
-        >
-          🌻 <Pinyin text="我的花园" />
-        </Link>
-      </div>
+      <KidNavBar
+        items={[
+          { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
+          collectionNavItem(child.theme, slug),
+        ]}
+      />
     </main>
   );
 }

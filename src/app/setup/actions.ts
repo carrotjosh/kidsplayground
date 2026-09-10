@@ -27,5 +27,6 @@ export async function setupAction(
   }
 
   await setSessionCookie({ userId: user.id, role: "parent" });
-  redirect("/admin");
+  // 新账号名下还没有孩子，直接送去建档，而不是落到一个到处报错的仪表盘。
+  redirect("/admin/children");
 }

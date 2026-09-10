@@ -8,7 +8,7 @@ export { cooldownStateFrom, formatCooldown } from "@/lib/cooldown";
 export type { CooldownState } from "@/lib/cooldown";
 
 /**
- * 批量查一组礼物的冷却状态，给礼物橱窗渲染用。
+ * 批量查一组礼物的冷却状态，给礼物商店渲染用。
  * 一次查询把所有礼物的最近一次兑换时间取回来，避免每个礼物查一次（数据库往返很贵）。
  */
 export async function getCooldownStates(

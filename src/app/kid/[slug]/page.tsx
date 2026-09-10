@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { MonthCalendar } from "@/components/MonthCalendar";
+import { KidNavBar } from "@/components/KidNavBar";
+import { collectionNavItem } from "@/lib/theme";
+import { MonthCalendar, MonthNav } from "@/components/MonthCalendar";
 import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
 import { CompactTaskCard } from "@/components/TaskCard";
@@ -64,20 +66,27 @@ export default async function KidHomePage({
         <h1 className="pixel-text-outline kid-text text-xl text-white lg:text-3xl">
           <Pinyin text={`${child.name}，你好`} />
         </h1>
-        <PointsBadge balance={balance} />
+        <div className="flex items-center gap-3">
+          {/* 今天几号星期几放在顶部、紧挨着阳光总数，做成同样的卡片让它醒目 */}
+          <div className="pixel-card flex items-center gap-2 bg-white px-4 py-2 lg:px-5 lg:py-3">
+            <span className="text-2xl lg:text-3xl">📅</span>
+            <p className="kid-text text-lg leading-tight text-slate-800 lg:text-2xl">
+              <Pinyin text={formatDateWithWeekday(today)} />
+            </p>
+          </div>
+          <PointsBadge balance={balance} />
+        </div>
       </header>
 
-      {/* 中间区域左右分栏：左边今天要做的事（一列等大卡片），右边打卡日历（撑满剩余高度） */}
+      {/* 中间区域左右分栏：左边今天要做的事（一列等大卡片），右边打卡日历（撑满剩余高度）。
+          两栏的标题行都用 h-11/h-12 固定高度，保证下面的卡片顶边和日历顶边对齐。 */}
       <div className="flex min-h-0 flex-1 gap-3 lg:gap-4">
         {/* 左：今天我要做的事 */}
         <section className="flex min-h-0 w-[38%] max-w-md shrink-0 flex-col gap-1">
-          <div className="shrink-0">
+          <div className="flex h-11 shrink-0 items-center lg:h-12">
             <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
               <Pinyin text="今天我要做的事" />
             </h2>
-            <p className="kid-text pixel-text-outline text-sm text-white lg:text-base">
-              <Pinyin text={formatDateWithWeekday(today)} />
-            </p>
           </div>
           {tasks.length === 0 ? (
             <p className="pixel-card kid-text bg-white p-3 text-center text-lg text-slate-500">
@@ -98,40 +107,43 @@ export default async function KidHomePage({
 
         {/* 右：我的打卡日历 */}
         <section className="flex min-h-0 flex-1 flex-col gap-1">
-          <div className="flex shrink-0 items-baseline justify-between gap-2">
-            <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
-              <Pinyin text="我的打卡日历" />
-            </h2>
-            <Link
-              href={`/kid/${slug}/calendar`}
-              className="kid-text pixel-text-outline text-sm text-white lg:text-base"
-            >
-              <Pinyin text="看以前的" /> →
-            </Link>
+          {/* 翻月控件提到标题行里（而不是留在日历内部），这样右栏也只有一行表头，
+              高度和左栏一致，日历顶边才能和第一张任务卡顶边对齐。 */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 lg:h-12">
+            <div className="flex items-baseline gap-3">
+              <h2 className="kid-text pixel-text-outline text-base text-white lg:text-xl">
+                <Pinyin text="我的打卡日历" />
+              </h2>
+              {/* 进满勤奖进度页的入口。翻月在这一行右边就能做，所以这里只留"看奖励进度"。 */}
+              <Link
+                href={`/kid/${slug}/calendar`}
+                className="kid-text pixel-text-outline whitespace-nowrap text-sm text-white lg:text-base"
+              >
+                <Pinyin text="看奖励进度" /> →
+              </Link>
+            </div>
+            <MonthNav month={summary.month} basePath={`/kid/${slug}`} big />
           </div>
           <div className="min-h-0 flex-1">
-            {/* basePath 传当前页，日历上的左右箭头就能在首页原地翻月 */}
-            <MonthCalendar summary={summary} basePath={`/kid/${slug}`} big fitHeight />
+            <MonthCalendar
+              summary={summary}
+              basePath={null}
+              dayHref={(d) => `/kid/${slug}/day/${d}`}
+              big
+              fitHeight
+            />
           </div>
         </section>
       </div>
 
       {/* 三、我的花园 + 礼物商店 */}
-      <div className="flex shrink-0 gap-2 lg:gap-3">
-        {/* animate-delay-half 让两个按钮错开半个周期，一上一下交替跳。 */}
-        <Link
-          href={`/kid/${slug}/garden`}
-          className="pixel-btn animate-bounce-slow animate-delay-half kid-text flex flex-1 items-center justify-center gap-2 bg-nes-green py-2 text-lg text-white lg:py-3 lg:text-2xl"
-        >
-          🌻 <Pinyin text="我的花园" />
-        </Link>
-        <Link
-          href={`/kid/${slug}/rewards`}
-          className="pixel-btn animate-bounce-slow kid-text flex flex-1 items-center justify-center gap-2 bg-nes-pink py-2 text-lg text-white lg:py-3 lg:text-2xl"
-        >
-          🎁 <Pinyin text="礼物商店" />
-        </Link>
-      </div>
+      <KidNavBar
+        compact
+        items={[
+          collectionNavItem(child.theme, slug),
+          { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },
+        ]}
+      />
     </main>
   );
 }

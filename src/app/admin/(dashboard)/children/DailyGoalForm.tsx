@@ -4,12 +4,13 @@ import { useActionState } from "react";
 
 import { setDailyGoalAction } from "./actions";
 
-export function DailyGoalForm({ current }: { current: number }) {
+/** 每日达标线是孩子档案的属性，所以放在这一页，作用于"当前管理中"的那个孩子。 */
+export function DailyGoalForm({ childName, current }: { childName: string; current: number }) {
   const [error, formAction, isPending] = useActionState(setDailyGoalAction, null);
 
   return (
     <form action={formAction} className="pixel-card flex flex-col gap-2 bg-white p-4">
-      <h2 className="font-semibold">每日达标线</h2>
+      <h2 className="font-semibold">{childName} 的每日达标线</h2>
       <p className="text-sm text-slate-500">
         当天已批准的任务加起来达到这么多阳光，这一天就算打卡成功（日历点亮、计入满勤统计）。
       </p>

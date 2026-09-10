@@ -1,7 +1,7 @@
 import { getDayDetail } from "chinese-days";
 
 /**
- * WORKDAY  上班/上学日（含被调休调成工作日的周末）
+ * WORKDAY  上学日（含被调休调成工作日的周末）
  * WEEKEND  普通周末
  * HOLIDAY  法定节假日（春节、国庆等，含调休放假的工作日）
  */
@@ -10,7 +10,7 @@ export type DayType = "WORKDAY" | "WEEKEND" | "HOLIDAY";
 export type DayTypeInfo = {
   type: DayType;
   holidayName: string | null;
-  /** 调休补班：本来是周末，但被国家安排成了工作日 */
+  /** 调休上学：本来是周末，但被国家安排成了工作日 */
   isMakeupWorkday: boolean;
 };
 
@@ -20,13 +20,13 @@ export type DayTypeInfo = {
  * chinese-days 的 getDayDetail 返回 { work: boolean, name: string }：
  *   - work=false 且 name 是 "Saturday"/"Sunday" → 普通周末
  *   - work=false 且 name 形如 "National Day,国庆节,3" → 法定节假日
- *   - work=true  且 name 形如 "...,补班" → 调休补班（算工作日）
+ *   - work=true  且 name 形如 "...,补班" → 调休上学（算工作日）
  *
  * 注意：国务院一般在每年 11~12 月才公布次年的放假安排，所以更远年份的数据
  * 依赖 chinese-days 这个包持续更新——每年记得 npm update chinese-days 一次。
  */
 export function getDayType(dateString: string): DayTypeInfo {
-  // 本来是不是周末（用来判断"工作日"是不是调休补班来的）
+  // 本来是不是周末（用来判断"工作日"是不是调休来的）
   const weekday = new Date(`${dateString}T00:00:00.000Z`).getUTCDay();
   const fallsOnWeekend = weekday === 0 || weekday === 6;
 

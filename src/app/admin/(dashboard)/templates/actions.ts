@@ -122,7 +122,13 @@ export async function updateTemplateAction(
 
 export async function toggleTemplateActiveAction(templateId: string, active: boolean) {
   await requireParentSession();
-  await prisma.taskTemplate.update({ where: { id: templateId }, data: { active } });
+  const child = await getPrimaryChild();
+  // 必须带 childId：templateId 是客户端传来的，不加这个条件就能停用别人家的模板。
+  // 用 updateMany 而不是 update，是因为 update 的 where 只认唯一键，塞不进 childId。
+  await prisma.taskTemplate.updateMany({
+    where: { id: templateId, childId: child.id },
+    data: { active },
+  });
   revalidatePath("/admin/templates");
 }
 

@@ -14,7 +14,6 @@ import { prisma } from "@/lib/db";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
 
 import { approveAction, rejectAction, revokeAction } from "./actions";
-import { DailyGoalForm } from "./DailyGoalForm";
 import { MakeupDatePicker } from "./MakeupDatePicker";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -71,10 +70,20 @@ export default async function HistoryPage({
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">打卡记录</h1>
 
-      <div className="pixel-card flex flex-col gap-3 bg-white p-5">
+      {/* 日历就是补打卡的入口：点任意一个已过去的日子，下面的面板就切到那天。
+          带上 #makeup 锚点，点完自动滚到面板，不用自己找。 */}
+      <MonthCalendar
+        summary={summary}
+        basePath="/admin/history"
+        dayHref={(d) => `/admin/history?month=${month}&day=${d}#makeup`}
+        selectedDate={day}
+      />
+
+      <div id="makeup" className="pixel-card flex flex-col gap-3 bg-white p-5">
         <h2 className="font-semibold">补打卡</h2>
         <p className="text-sm text-slate-500">
-          选一个日期，把那天漏掉的任务补上。那天如果从来没生成过任务，这里会按模板自动补出来。
+          <b>直接点上面日历里的某一天</b>，就能把那天漏掉的任务补上；也可以用下面的日期框跳到更早的月份。
+          那天如果从来没生成过任务，这里会按模板自动补出来。
         </p>
         <MakeupDatePicker value={day ?? today} max={today} />
 
@@ -127,9 +136,7 @@ export default async function HistoryPage({
         )}
       </div>
 
-      <MonthCalendar summary={summary} basePath="/admin/history" />
       <MonthProgress summary={summary} />
-      <DailyGoalForm current={summary.dailyGoalPoints} />
 
       <div className="flex flex-col gap-2">
         <h2 className="font-semibold">本月任务明细</h2>

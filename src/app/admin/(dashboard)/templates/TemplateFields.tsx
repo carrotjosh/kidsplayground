@@ -16,7 +16,7 @@ const WEEKDAYS = [
 
 const SCHEDULE_OPTIONS = [
   { value: "WEEKDAYS", label: "按星期几", hint: "自己勾选周一到周日" },
-  { value: "WORKDAY", label: "法定工作日", hint: "跟着国家放假安排走，含调休补班的周末" },
+  { value: "WORKDAY", label: "法定工作日", hint: "跟着国家放假安排走，含调休上学的周末" },
   { value: "HOLIDAY", label: "法定节假日", hint: "春节、国庆这类法定假期（不含普通周末）" },
 ];
 

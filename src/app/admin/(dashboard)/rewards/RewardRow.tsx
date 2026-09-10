@@ -93,7 +93,7 @@ export function RewardRow({
             onClick={() => {
               if (
                 window.confirm(
-                  `确定删除礼物「${reward.title}」吗？\n\n孩子的礼物橱窗里不再显示，但已经兑换过的记录会保留。\n如果只是暂时不想让孩子换，用「下架」就行。`
+                  `确定删除礼物「${reward.title}」吗？\n\n孩子的礼物商店里不再显示，但已经兑换过的记录会保留。\n如果只是暂时不想让孩子换，用「下架」就行。`
                 )
               ) {
                 deleteFormRef.current?.requestSubmit();

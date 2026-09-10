@@ -15,11 +15,17 @@ export type MonthStats = {
   /** 任务总数 / 已批准数 */
   totalTasks: number;
   doneTasks: number;
-  /** 本月赚到的阳光（含满勤奖、家长手动加分） */
+  /** 本月**净**获得的阳光 = 毛收入 - 冲销 */
   earned: number;
-  /** 各来源赚了多少 */
+  /** 毛收入：完成任务 + 满勤奖 + 花园收获 + 家长加分 */
+  earnedGross: number;
+  /** 各来源赚了多少（毛收入的构成） */
   earnedBuckets: SpendBucket[];
-  /** 本月花掉的阳光（正数） */
+  /** 被冲销掉的阳光（正数）：撤销打卡扣回、家长手动扣分 */
+  reversed: number;
+  /** 冲销的构成 */
+  reversedBuckets: SpendBucket[];
+  /** 本月真正花掉的阳光（正数），只含兑换礼物和种植物 */
   spent: number;
   /** 花在哪了 */
   spentBuckets: SpendBucket[];
@@ -28,17 +34,56 @@ export type MonthStats = {
   plantDetail: SpendBucket[];
 };
 
+/**
+ * 每条流水归到三类里的哪一类。
+ *
+ * 关键是**按语义分，不是按正负号分**。撤销打卡（TASK_REVOKE）金额是负的，
+ * 但它不是"孩子花掉了阳光"，而是"当初那笔收入不算数了"——把它算进支出会同时虚高
+ * 收入和支出两边，家长看到的"这个月花了多少"里混着根本没花出去的钱。
+ * 家长手动扣分同理，那是罚，不是买东西。
+ *
+ * 三类的关系：净收入 = 毛收入 - 冲销；净收入 - 支出 = 本月余额变化。
+ */
+type LedgerBucket = "EARN" | "REVERSAL" | "SPEND";
+
+function classify(type: LedgerType, amount: number): LedgerBucket {
+  switch (type) {
+    case "TASK_COMPLETE":
+    case "MONTHLY_BONUS":
+    case "GARDEN_BONUS":
+    case "POKEDEX_BONUS":
+      return "EARN";
+    case "REDEMPTION":
+    case "PLANT_SEED":
+    case "BALL_BUY": // 球扔出去就消耗掉了，抓没抓到都是花出去的
+      return "SPEND";
+    case "TASK_REVOKE":
+      return "REVERSAL";
+    case "MANUAL_ADJUST":
+      // 同一个类型两个方向：加分是收入，扣分是冲销
+      return amount >= 0 ? "EARN" : "REVERSAL";
+    default:
+      return amount >= 0 ? "EARN" : "SPEND";
+  }
+}
+
 const EARN_LABELS: Partial<Record<LedgerType, string>> = {
   TASK_COMPLETE: "完成任务",
   MONTHLY_BONUS: "月度满勤奖",
   MANUAL_ADJUST: "家长手动加分",
+  GARDEN_BONUS: "花园集齐奖励",
+  POKEDEX_BONUS: "图鉴收集奖励",
+};
+
+const REVERSAL_LABELS: Partial<Record<LedgerType, string>> = {
+  TASK_REVOKE: "撤销打卡扣回",
+  MANUAL_ADJUST: "家长手动扣分",
 };
 
 const SPEND_LABELS: Partial<Record<LedgerType, string>> = {
   REDEMPTION: "兑换礼物",
   PLANT_SEED: "种植物",
-  TASK_REVOKE: "撤销打卡扣回",
-  MANUAL_ADJUST: "家长手动扣分",
+  BALL_BUY: "买精灵球",
 };
 
 function toBuckets(
@@ -86,7 +131,9 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
     }),
     prisma.plant.findMany({
       where: { childId, plantedOnDate: { gte: monthStart, lte: monthEnd } },
-      select: { title: true, plantTypeId: true, plantType: { select: { cost: true } } },
+      // 花的阳光取当时那条 PLANT_SEED 流水，而不是植物目录上的现价——
+      // 目录可以被家长改价甚至删掉，流水才是"当时真的花了多少"。
+      select: { title: true, ledgerEntry: { select: { amount: true } } },
     }),
   ]);
 
@@ -106,8 +153,9 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
     (d) => (earnedByDate.get(d) ?? 0) >= child.dailyGoalPoints
   ).length;
 
-  const earnEntries = ledger.filter((e) => e.amount > 0);
-  const spendEntries = ledger.filter((e) => e.amount < 0);
+  const earnEntries = ledger.filter((e) => classify(e.type, e.amount) === "EARN");
+  const reversalEntries = ledger.filter((e) => classify(e.type, e.amount) === "REVERSAL");
+  const spendEntries = ledger.filter((e) => classify(e.type, e.amount) === "SPEND");
 
   const groupDetail = (rows: { label: string; cost: number }[]): SpendBucket[] => {
     const map = new Map<string, { amount: number; count: number }>();
@@ -122,6 +170,9 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
       .sort((a, b) => b.amount - a.amount);
   };
 
+  const earnedGross = earnEntries.reduce((s, e) => s + e.amount, 0);
+  const reversed = reversalEntries.reduce((s, e) => s + Math.abs(e.amount), 0);
+
   return {
     month,
     taskDays,
@@ -129,12 +180,17 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
     reachedRatio: taskDays > 0 ? reachedDays / taskDays : 0,
     totalTasks: tasks.length,
     doneTasks,
-    earned: earnEntries.reduce((s, e) => s + e.amount, 0),
+    earned: earnedGross - reversed,
+    earnedGross,
     earnedBuckets: toBuckets(earnEntries, EARN_LABELS),
+    reversed,
+    reversedBuckets: toBuckets(reversalEntries, REVERSAL_LABELS),
     spent: spendEntries.reduce((s, e) => s + Math.abs(e.amount), 0),
     spentBuckets: toBuckets(spendEntries, SPEND_LABELS),
     rewardDetail: groupDetail(redemptions.map((r) => ({ label: r.rewardTitle, cost: r.cost }))),
-    plantDetail: groupDetail(plants.map((p) => ({ label: p.title, cost: p.plantType.cost }))),
+    plantDetail: groupDetail(
+      plants.map((p) => ({ label: p.title, cost: Math.abs(p.ledgerEntry?.amount ?? 0) }))
+    ),
   };
 }
 

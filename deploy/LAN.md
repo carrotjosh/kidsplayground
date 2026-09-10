@@ -31,6 +31,8 @@
    DATABASE_URL="你的 Neon 新加坡连接串"
    SESSION_SECRET="用 openssl rand -hex 32 生成的随机串"
    ALLOW_INSECURE_COOKIES=1
+   # 可选，想让别人也能在这台机器上注册账号才需要；不加 = 注册关闭
+   # INVITE_CODE="足够长的随机串"
    ```
 
    > `ALLOW_INSECURE_COOKIES=1` 这行**局域网部署必须加**。

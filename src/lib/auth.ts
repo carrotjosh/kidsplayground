@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 
 import { ActionError } from "@/lib/errors";
+import { getUserById } from "@/lib/users";
 
 export const SESSION_COOKIE = "kid_checkin_session";
 /** 一次登录管一年——孩子的平板"添加到主屏幕"后不应该动不动就要重新登录。 */
@@ -9,7 +10,19 @@ export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 /** parent = 家长本人，能进 /admin；kid = 孩子的设备，只能进 /kid，防止自己批准自己。 */
 export type SessionRole = "parent" | "kid";
-export type Session = { userId: string; role: SessionRole };
+
+export type Session = {
+  userId: string;
+  role: SessionRole;
+  /**
+   * 超管"以某个账号的身份查看"时填的目标账号 id。
+   *
+   * 只影响读写落到谁的数据上（见 lib/child.ts 的 effectiveUserId），**不影响身份判定**：
+   * userId 永远是真人自己，所以代管期间再点一次代管，校验的仍然是真人有没有超管权限，
+   * 不会出现"代管 A 之后借 A 的身份去代管 B"的越权链。
+   */
+  impersonatingUserId?: string;
+};
 
 // ---------- 密码哈希 ----------
 // 用 Web Crypto 的 PBKDF2 而不是 bcrypt：不需要原生依赖，Node 和 Cloudflare Workers
@@ -81,6 +94,11 @@ export function createSessionToken(session: Session): string {
   return `${payload}.${sign(payload)}`;
 }
 
+/** 会话里是否处于"代管别人"的状态。 */
+export function isImpersonating(session: Session | null): boolean {
+  return Boolean(session?.impersonatingUserId);
+}
+
 /** 校验签名和有效期，通过就返回会话内容，否则返回 null。proxy 和页面共用这一个函数。 */
 export function readSessionToken(token: string | undefined | null): Session | null {
   if (!token) return null;
@@ -99,7 +117,12 @@ export function readSessionToken(token: string | undefined | null): Session | nu
     if (typeof data.userId !== "string") return null;
     if (data.role !== "parent" && data.role !== "kid") return null;
     if (typeof data.exp !== "number" || Date.now() > data.exp) return null;
-    return { userId: data.userId, role: data.role };
+    // 只有家长会话能带代管标记；孩子设备的受限会话带上也一律忽略。
+    const impersonatingUserId =
+      data.role === "parent" && typeof data.impersonatingUserId === "string"
+        ? data.impersonatingUserId
+        : undefined;
+    return { userId: data.userId, role: data.role, impersonatingUserId };
   } catch {
     return null;
   }
@@ -128,6 +151,21 @@ export async function requireParentSession(): Promise<Session> {
 export async function requireAnySession(): Promise<Session> {
   const session = await getSession();
   if (!session) throw new ActionError("请先登录");
+  return session;
+}
+
+/**
+ * 超管专用闸口。故意每次都查库而不是把标志写进会话令牌：令牌有效期一年，
+ * 权限一旦被收回，旧令牌不该还能用。这个页面很少打开，多一次查询无所谓。
+ *
+ * 校验的是 session.userId（真人），**不是**代管后的 id——见 Session.impersonatingUserId 的注释。
+ */
+export async function requireSuperAdmin(): Promise<Session> {
+  const session = await requireParentSession();
+  const user = await getUserById(session.userId);
+  if (!user?.isSuperAdmin) {
+    throw new ActionError("需要超级管理员权限");
+  }
   return session;
 }
 

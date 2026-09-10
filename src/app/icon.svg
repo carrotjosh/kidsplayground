@@ -1,0 +1,40 @@
+<!--
+  浏览器页签图标：16×16 的像素太阳，配色跟 globals.css 里的 NES 色板一致
+  （天蓝 #5c94fc 背景、黄色 #fbd000 太阳、黑色 #101010 描边），和整站的 8-bit 风格对上。
+
+  故意用 SVG 而不是 ico：viewBox 是 16×16 的整数网格，每个"像素"就是一格，
+  放大到 32/64/180 时台阶依然是硬边，不会被抗锯齿糊成一团。
+  shape-rendering=crispEdges 是为了让浏览器别对这些直角边做平滑。
+
+  文件名 icon.svg 是 Next.js App Router 的约定：放在 src/app/ 下会自动生成
+  <link rel="icon">，不需要在 layout.tsx 里手写。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <rect width="16" height="16" fill="#5c94fc" />
+
+  <!-- 光芒不描边：描边宽度是按 viewBox 单位算的，在 512px 下 1 个单位 = 32px，
+       会把这些只有 2 个单位大的小方块整个吞掉，放大后看就是一团黑。纯色块在天蓝底上
+       对比已经够强，不需要描边。 -->
+  <g fill="#fbd000">
+    <!-- 四个正方向的光芒 -->
+    <rect x="7" y="1" width="2" height="2" />
+    <rect x="7" y="13" width="2" height="2" />
+    <rect x="1" y="7" width="2" height="2" />
+    <rect x="13" y="7" width="2" height="2" />
+
+    <!-- 四个斜角的光芒 -->
+    <rect x="3" y="3" width="2" height="2" />
+    <rect x="11" y="3" width="2" height="2" />
+    <rect x="3" y="11" width="2" height="2" />
+    <rect x="11" y="11" width="2" height="2" />
+  </g>
+
+  <!-- 太阳本体：用台阶状折线画出"像素圆"，而不是真的 circle。
+       只有它保留黑描边——它够大，描边是点睛的 8-bit 轮廓而不是噪点。 -->
+  <path
+    d="M6 4 H10 V5 H11 V6 H12 V10 H11 V11 H10 V12 H6 V11 H5 V10 H4 V6 H5 V5 H6 Z"
+    fill="#fbd000"
+    stroke="#101010"
+    stroke-width="0.9"
+  />
+</svg>

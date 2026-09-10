@@ -16,6 +16,22 @@ type Db = {
   pointsLedger: typeof prisma.pointsLedger;
 };
 
+/** 判断某个模板在某一天生不生效。单独抽出来是为了让"这个月一共该打卡几天"能用同一套规则。 */
+export function isTemplateDueOn(
+  template: { scheduleType: ScheduleType; weekdays: number[] },
+  dateString: string
+): boolean {
+  switch (template.scheduleType) {
+    case ScheduleType.WORKDAY:
+      return getDayType(dateString).type === "WORKDAY";
+    case ScheduleType.HOLIDAY:
+      return getDayType(dateString).type === "HOLIDAY";
+    case ScheduleType.WEEKDAYS:
+    default:
+      return template.weekdays.includes(weekdayOfDateString(dateString));
+  }
+}
+
 /**
  * 确保某一天的周期任务已经落库成 DailyTask（幂等，靠 @@unique([childId, date, templateId])
  * + skipDuplicates）。既用于"今天"的懒生成，也用于夜间结算回填过去缺失的日子——否则孩子
@@ -23,8 +39,6 @@ type Db = {
  */
 export async function ensureDailyTasksForDate(db: Db, childId: string, dateString: string) {
   const date = dateStringToUtcDate(dateString);
-  const weekday = weekdayOfDateString(dateString);
-  const { type: dayType } = getDayType(dateString);
 
   // 模板数量很少（家庭场景通常个位数），全部取出来在内存里按生效规则过滤，
   // 比把"法定工作日/节假日"这种需要查日历表的判断塞进 SQL 简单可靠。
@@ -32,17 +46,7 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
     where: { childId, active: true },
   });
 
-  const dueTemplates = activeTemplates.filter((template) => {
-    switch (template.scheduleType) {
-      case ScheduleType.WORKDAY:
-        return dayType === "WORKDAY";
-      case ScheduleType.HOLIDAY:
-        return dayType === "HOLIDAY";
-      case ScheduleType.WEEKDAYS:
-      default:
-        return template.weekdays.includes(weekday);
-    }
-  });
+  const dueTemplates = activeTemplates.filter((t) => isTemplateDueOn(t, dateString));
 
   if (dueTemplates.length > 0) {
     await db.dailyTask.createMany({
