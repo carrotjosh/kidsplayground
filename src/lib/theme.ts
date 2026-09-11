@@ -28,6 +28,27 @@ export const THEME_META: Record<
   },
 };
 
+/**
+ * 给家长挑主题时看的说明。
+ *
+ * 放这里而不是各写各的：建档表单和「孩子档案」里的切换器都要用同一套文案，
+ * 分成两份的话改了一处忘了另一处，家长会在两个地方看到不一样的说明。
+ */
+export const THEME_CHOICES: { theme: KidTheme; emoji: string; name: string; desc: string }[] = [
+  {
+    theme: "GARDEN",
+    emoji: "🌻",
+    name: "植物大战僵尸",
+    desc: "阳光买植物种进 4×4 的花园；任务没完成，当晚僵尸会吃掉一棵；每种种满 4 棵集齐一套，连本带利换回 1.5 倍阳光。",
+  },
+  {
+    theme: "POKEDEX",
+    emoji: "📕",
+    name: "宝可梦图鉴",
+    desc: "阳光买精灵球去抓宝可梦，球越好越容易遇到并抓住稀有的；任务没完成，会有一只离家出走；每集齐 8 种奖励阳光，同一种攒够数量还有额外奖励。",
+  },
+];
+
 /** 孩子端底部导航里"收藏玩法"那个按钮，按主题给不同的入口。 */
 export function collectionNavItem(theme: KidTheme, slug: string): KidNavItem {
   const meta = THEME_META[theme];

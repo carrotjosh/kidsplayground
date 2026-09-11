@@ -115,30 +115,33 @@ export default async function EconomyAdminPage() {
       {audit.groups.map((group) => (
         <div key={group.title} className="pixel-card flex flex-col gap-2 bg-white p-5">
           <h2 className="font-semibold">{group.title}</h2>
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-slate-400">
-              <tr>
-                <th className="py-1 font-normal">项目</th>
-                <th className="py-1 text-right font-normal">价格</th>
-                <th className="py-1 text-right font-normal">折合</th>
-                <th className="py-1 text-right font-normal">设计区间</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.items.map((item) => (
-                <tr key={item.label} className="border-t border-slate-100">
-                  <td className="py-1.5">{item.label}</td>
-                  <td className="py-1.5 text-right tabular-nums">{item.cost}</td>
-                  <td className={`py-1.5 text-right tabular-nums ${STATUS_STYLE[item.status]}`}>
-                    {item.days.toFixed(1)} 天 {STATUS_LABEL[item.status]}
-                  </td>
-                  <td className="py-1.5 text-right text-xs text-slate-400 tabular-nums">
-                    {item.band ? `${item.band.min}–${item.band.max} 天` : "—"}
-                  </td>
+          {/* 四列中文在 375px 的手机上放不下，套一层横向滚动而不是让它把整页撑宽 */}
+          <div className="-mx-1 overflow-x-auto px-1">
+            <table className="w-full min-w-[22rem] text-sm">
+              <thead className="text-left text-xs text-slate-400">
+                <tr>
+                  <th className="py-1 font-normal">项目</th>
+                  <th className="py-1 text-right font-normal">价格</th>
+                  <th className="py-1 text-right font-normal">折合</th>
+                  <th className="py-1 text-right font-normal">设计区间</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {group.items.map((item) => (
+                  <tr key={item.label} className="border-t border-slate-100">
+                    <td className="py-1.5">{item.label}</td>
+                    <td className="py-1.5 text-right tabular-nums">{item.cost}</td>
+                    <td className={`py-1.5 text-right tabular-nums ${STATUS_STYLE[item.status]}`}>
+                      {item.days.toFixed(1)} 天 {STATUS_LABEL[item.status]}
+                    </td>
+                    <td className="py-1.5 text-right text-xs text-slate-400 tabular-nums">
+                      {item.band ? `${item.band.min}–${item.band.max} 天` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
 

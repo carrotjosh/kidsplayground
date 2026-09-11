@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { logoutAction } from "@/app/login/actions";
@@ -7,6 +6,7 @@ import { getActiveChild, listChildren } from "@/lib/child";
 import { THEME_META } from "@/lib/theme";
 import { prisma } from "@/lib/db";
 
+import { AdminNav } from "./AdminNav";
 import { ChildSwitcher } from "./ChildSwitcher";
 import { ImpersonationBanner } from "./ImpersonationBanner";
 
@@ -61,25 +61,17 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {impersonatedEmail && <ImpersonationBanner email={impersonatedEmail} />}
 
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-nes-black bg-nes-brown px-6 py-4">
-        <nav className="flex flex-wrap gap-4 text-sm font-bold">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="pixel-text-outline text-white hover:text-nes-yellow"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+      {/* relative：手机版的导航抽屉要绝对定位挂在头部下沿 */}
+      <header className="relative flex flex-wrap items-center justify-between gap-3 border-b-4 border-nes-black bg-nes-brown px-4 py-3 md:px-6 md:py-4">
+        <AdminNav items={navItems} logout={logoutAction} />
 
         <div className="flex items-center gap-3">
           {/* 只有一个孩子时不显示切换器，免得白占地方 */}
           {childList.length > 1 && activeChild && (
             <ChildSwitcher options={childList} activeId={activeChild.id} />
           )}
-          <form action={logoutAction}>
+          {/* 手机上退出登录挪进了抽屉，头部空间留给"我在哪一页" */}
+          <form action={logoutAction} className="hidden md:block">
             <button
               type="submit"
               className="pixel-btn bg-nes-red px-3 py-1.5 text-sm font-bold text-white"
@@ -90,7 +82,7 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl p-6">{children}</main>
+      <main className="mx-auto max-w-3xl p-4 md:p-6">{children}</main>
     </div>
   );
 }

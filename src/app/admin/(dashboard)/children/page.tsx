@@ -19,11 +19,11 @@ export default async function ChildrenAdminPage() {
 
       {children.length === 0 && (
         <p className="pixel-card bg-amber-50 p-4 text-sm text-slate-600">
-          👋 还没有孩子档案。先在下面建一个，后台其它页面才有内容可显示。
+          👋 欢迎！先建一个孩子档案，后台其它页面才有内容可显示。
         </p>
       )}
 
-      <ChildForm />
+      <ChildForm isFirst={children.length === 0} />
 
       {active && <ThemePicker current={active.theme} childName={active.name} />}
       {active && <DailyGoalForm childName={active.name} current={active.dailyGoalPoints} />}
