@@ -16,6 +16,7 @@ import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { CaughtStatus, Gender, ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
+import { purgeTestTenants } from "../src/lib/testTenant";
 import { todayAsUtcDate } from "../src/lib/date";
 import {
   dailyEarnRate,
@@ -89,6 +90,11 @@ async function destroyTenant(childId: string, userId: string) {
 }
 
 async function main() {
+  // 上一次跑到一半崩了的话，临时租户会留在库里（真发生过：清理那步 Neon 连接抖了一下）。
+  // finally 里的清理自己也可能失败，所以开跑前先扫一遍残骸。
+  const swept = await purgeTestTenants(MARK);
+  if (swept > 0) console.log(`清理了 ${swept} 个上次残留的临时租户。`);
+
   // ---------- 1. 日薪 ----------
   console.log("\n【日薪】按真实日历逐天算，不是按 5/7、2/7 拍");
   const daily = (points: number, weekdays: number[]) => ({
@@ -333,8 +339,15 @@ async function main() {
       else fail("城都宝可梦", "摇了 40 天一只都没出现");
     }
   } finally {
-    await destroyTenant(child.id, user.id);
-    console.log("\n临时租户已清理。");
+    // 清理本身失败也不能静默：兜底再扫一次，还失败就把话说清楚，别让人以为库是干净的
+    try {
+      await destroyTenant(child.id, user.id);
+      console.log("\n临时租户已清理。");
+    } catch (error) {
+      console.error("\n清理临时租户失败，尝试兜底清扫：", error);
+      const n = await purgeTestTenants(MARK).catch(() => -1);
+      console.log(n >= 0 ? `兜底清扫掉了 ${n} 个。` : "⚠️ 兜底也失败了，请手工检查库里的 __econ_check__ 账号。");
+    }
   }
 
   if (failures > 0) {
