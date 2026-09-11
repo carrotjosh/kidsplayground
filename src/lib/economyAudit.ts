@@ -31,13 +31,27 @@ export type AuditFinding = {
   detail: string;
 };
 
+/** 这一项是哪张表里的哪一行，逐行改价时要用。dailyGoal 不是目录项，是 Child 上的一个字段。 */
+export type PricedItemKind = "reward" | "ball" | "plant" | "dailyGoal";
+
 export type PricedItem = {
+  kind: PricedItemKind;
+  id: string;
   label: string;
   cost: number;
   /** 折合几天工资 */
   days: number;
   band: { min: number; max: number } | null;
   status: "ok" | "low" | "high";
+  /**
+   * 越界时给一个建议价：贴到**最近的那条边界**，并朝区间内侧取整
+   * （偏便宜就往上 ceil、偏贵就往下 floor）。
+   *
+   * 不用区间中点：很多项只是差一点点越界（比如 15 阳光算下来 0.395 天、下限 0.4），
+   * 按中点会直接翻倍，那不是"修一下"是"改设计"。取边界改动最小；
+   * 而朝内侧取整保证落进去之后不会因为四舍五入又滑出来、反复报警。
+   */
+  suggested: number | null;
 };
 
 export type EconomyAudit = {
@@ -78,10 +92,30 @@ function classify(days: number, band: { min: number; max: number } | null): Pric
   return "ok";
 }
 
-function priced(label: string, cost: number, rate: number, key: PriceBandKey | null): PricedItem {
+function priced(
+  kind: PricedItemKind,
+  id: string,
+  label: string,
+  cost: number,
+  rate: number,
+  key: PriceBandKey | null
+): PricedItem {
   const band = key ? { min: PRICE_BANDS[key].min, max: PRICE_BANDS[key].max } : null;
   const days = rate > 0 ? cost / rate : 0;
-  return { label, cost, days, band, status: classify(days, band) };
+  const status = classify(days, band);
+  return {
+    kind,
+    id,
+    label,
+    cost,
+    days,
+    band,
+    status,
+    suggested:
+      status === "ok" || !band || rate <= 0
+        ? null
+        : Math.max(1, status === "low" ? Math.ceil(band.min * rate) : Math.floor(band.max * rate)),
+  };
 }
 
 const BALL_BAND: Record<BallTier, PriceBandKey> = {
@@ -216,6 +250,8 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       title: "礼物商店",
       items: rewards.map((r) =>
         priced(
+          "reward",
+          r.id,
           `${r.title}（${r.cooldownDays ? `${r.cooldownDays} 天冷却` : "不限次数"}）`,
           r.cost,
           rate,
@@ -227,15 +263,15 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       title: "精灵球",
       items: [...balls]
         .sort((a, b) => a.cost - b.cost)
-        .map((b) => priced(b.title, b.cost, rate, BALL_BAND[b.tier])),
+        .map((b) => priced("ball", b.id, b.title, b.cost, rate, BALL_BAND[b.tier])),
     },
     {
       title: "植物",
-      items: plants.map((p) => priced(p.title, p.cost, rate, "plant")),
+      items: plants.map((p) => priced("plant", p.id, p.title, p.cost, rate, "plant")),
     },
     {
       title: "其他",
-      items: [priced("每日达标线", child.dailyGoalPoints, rate, "dailyGoal")],
+      items: [priced("dailyGoal", childId, "每日达标线", child.dailyGoalPoints, rate, "dailyGoal")],
     },
   ].filter((g) => g.items.length > 0);
 

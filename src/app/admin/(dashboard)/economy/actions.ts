@@ -104,3 +104,56 @@ export async function acceptCurrentPricesAction() {
   });
   revalidatePath("/admin/economy");
 }
+
+/**
+ * 改**单独一项**的价格。
+ *
+ * 体检页每一行后面都挂着这个：整表按比例校准是一刀切，
+ * 但很多时候家长只是想把某一样调进区间、或者按自己的判断单独改一个数。
+ *
+ * kind 决定改哪张表。**不接受任意 kind**——它来自页面，是不可信输入，
+ * 只认这四个已知值，并且每一条都带上 childId 条件挡住越权。
+ */
+export async function setItemPriceAction(
+  kind: "reward" | "ball" | "plant" | "dailyGoal",
+  id: string,
+  formData: FormData
+) {
+  await requireParentSession();
+  const child = await getPrimaryChild();
+
+  const cost = Number(formData.get("cost"));
+  if (!Number.isFinite(cost) || cost < 0 || cost > 100_000) {
+    throw new ActionError("请填一个 0 ~ 100000 之间的数字");
+  }
+  const value = Math.round(cost);
+
+  switch (kind) {
+    case "reward":
+      await prisma.reward.updateMany({ where: { id, childId: child.id }, data: { cost: value } });
+      break;
+    case "ball":
+      // 球价不能为 0：0 阳光的球等于无限扔，抓宝可梦立刻变成纯白嫖
+      if (value < 1) throw new ActionError("精灵球的价格至少是 1");
+      await prisma.ballType.updateMany({ where: { id, childId: child.id }, data: { cost: value } });
+      break;
+    case "plant":
+      if (value < 1) throw new ActionError("植物的价格至少是 1");
+      await prisma.plantType.updateMany({ where: { id, childId: child.id }, data: { cost: value } });
+      break;
+    case "dailyGoal":
+      if (value < 1) throw new ActionError("每日达标线至少是 1");
+      // id 这里传的是 childId，但仍然用当前会话的 child.id 去写，不采信它
+      await prisma.child.update({ where: { id: child.id }, data: { dailyGoalPoints: value } });
+      break;
+    default:
+      throw new ActionError("不认识的项目类型");
+  }
+
+  revalidatePath("/admin/economy");
+  revalidatePath("/admin/rewards");
+  revalidatePath("/admin/balls");
+  revalidatePath("/admin/plants");
+  revalidatePath("/admin/children");
+  revalidatePath(`/kid/${child.slug}`, "layout");
+}
