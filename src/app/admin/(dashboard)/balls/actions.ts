@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
-import { MAX_LEVEL } from "@/lib/level";
 
 /**
  * 精灵球目录只允许改**价格**和上下架，不允许增删品种、也不允许改 catchPower。
@@ -26,16 +25,10 @@ export async function updateBallAction(
 
   const cost = Number(formData.get("cost"));
   if (!Number.isFinite(cost) || cost <= 0) return "请填写大于 0 的阳光价格";
-  // 表单值不可信，夹到 1~MAX_LEVEL：填个 99 会让这种球永远出不来
-  const unlockLevel = Math.min(
-    Math.max(Math.round(Number(formData.get("unlockLevel")) || 1), 1),
-    MAX_LEVEL
-  );
-
   const child = await getPrimaryChild();
   const result = await prisma.ballType.updateMany({
     where: { id: ballTypeId, childId: child.id },
-    data: { cost, unlockLevel },
+    data: { cost },
   });
   if (result.count === 0) return "找不到这种精灵球";
 

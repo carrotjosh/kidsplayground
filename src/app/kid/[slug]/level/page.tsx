@@ -28,16 +28,16 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
   const levelUp = await checkLevelUp(child.id);
   const level = levelUp?.level ?? child.level;
 
-  const [earned, balance, roadmap, gardenPath, rounds] = await Promise.all([
+  const [earned, balance, gardenPath, rounds] = await Promise.all([
     totalEarned(child.id),
     getPointsBalance(child.id),
-    getLevelRoadmap(child.id, level, child.theme),
     // 花园主题的植物走的是另一条线（按收获轮数），孩子同样要看得见它的尽头
     child.theme === KidTheme.GARDEN
       ? getGardenRoadmap(child.id, child.gardenStage)
       : Promise.resolve([]),
     child.theme === KidTheme.GARDEN ? getHarvestedRounds(child.id) : Promise.resolve(0),
   ]);
+  const roadmap = getLevelRoadmap(level);
   const progress = levelProgress(level, earned);
 
   return (
@@ -114,18 +114,12 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
               </span>
             </span>
 
-            {/* 这一级能开出什么。没有道具的等级就给称号本身当奖励，不留空 */}
-            <span className="kid-text shrink-0 text-sm text-slate-600 lg:text-base">
-              {entry.unlocks.length > 0 ? (
-                <Pinyin
-                  text={`${entry.reached ? "已解锁" : "解锁"} ${entry.unlocks
-                    .map((u) => `${u.emoji ?? ""}${u.title}`)
-                    .join("、")}`}
-                />
-              ) : (
-                <Pinyin text="新称号" />
-              )}
-            </span>
+            {/* 已达成的打个勾就够了；等级本身不解锁任何东西，称号就是这一级的奖励 */}
+            {entry.reached && (
+              <span className="kid-text shrink-0 text-sm text-nes-green lg:text-base">
+                <Pinyin text="已达成" />
+              </span>
+            )}
           </div>
         ))}
 

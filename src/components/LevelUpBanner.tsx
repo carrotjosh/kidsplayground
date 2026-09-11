@@ -9,17 +9,11 @@ import { Pinyin } from "@/components/Pinyin";
 export function LevelUpBanner({
   levelUp,
 }: {
-  levelUp: { level: number; title: string; unlocked: string[] };
+  levelUp: { level: number; title: string };
 }) {
   return (
     <p className="pixel-card kid-text bg-nes-yellow p-4 text-center text-slate-900 lg:p-5">
       <Pinyin text={`🎊 升到 ${levelUp.level} 级啦！你现在是「${levelUp.title}」`} />
-      {levelUp.unlocked.length > 0 && (
-        <>
-          <br />
-          <Pinyin text={`解锁了：${levelUp.unlocked.join("、")}`} />
-        </>
-      )}
     </p>
   );
 }

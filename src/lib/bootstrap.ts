@@ -81,14 +81,12 @@ if (DEFAULT_PLANT_TYPES.length < GARDEN_STAGES.length + INITIAL_ACTIVE_PLANT_TYP
  * 精灵球目录。catchPower 是抓取率倍率，价格按倍率拉开档次。
  * 大师球必中（代码里特判 tier === MASTER），所以定价要足够贵——
  * 它是"攒很久换一只想要的传说"的兜底，不是日常消耗品。
- * 再加一道等级闸：不然新孩子第一天就能攒 200 买大师球，
- * 还没搞懂"什么时候该用好球"就把压箱底的牌打了。
  */
 const DEFAULT_BALL_TYPES = [
-  { tier: BallTier.POKE, title: "精灵球", emoji: "⚪", cost: 8, catchPower: 1, unlockLevel: 1 },
-  { tier: BallTier.GREAT, title: "超级球", emoji: "🔵", cost: 20, catchPower: 1.6, unlockLevel: 2 },
-  { tier: BallTier.ULTRA, title: "高级球", emoji: "🟡", cost: 45, catchPower: 2.6, unlockLevel: 3 },
-  { tier: BallTier.MASTER, title: "大师球", emoji: "🟣", cost: 200, catchPower: 99, unlockLevel: 5 },
+  { tier: BallTier.POKE, title: "精灵球", emoji: "⚪", cost: 8, catchPower: 1 },
+  { tier: BallTier.GREAT, title: "超级球", emoji: "🔵", cost: 20, catchPower: 1.6 },
+  { tier: BallTier.ULTRA, title: "高级球", emoji: "🟡", cost: 45, catchPower: 2.6 },
+  { tier: BallTier.MASTER, title: "大师球", emoji: "🟣", cost: 200, catchPower: 99 },
 ];
 
 /**

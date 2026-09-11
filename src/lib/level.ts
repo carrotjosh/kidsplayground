@@ -1,4 +1,4 @@
-import { KidTheme, LedgerType } from "@/generated/prisma/client";
+import { LedgerType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { LEVELS, levelForEarned, levelTitle } from "@/lib/levelTable";
 
@@ -56,7 +56,7 @@ export async function totalEarned(childId: string): Promise<number> {
  */
 export async function checkLevelUp(
   childId: string
-): Promise<{ level: number; title: string; unlocked: string[] } | null> {
+): Promise<{ level: number; title: string } | null> {
   const child = await prisma.child.findUnique({
     where: { id: childId },
     select: { level: true },
@@ -73,55 +73,32 @@ export async function checkLevelUp(
   });
   if (updated.count === 0) return null;
 
-  // 顺带告诉孩子这次开了什么。跨级时把中间几级解锁的也一起报出来。
-  // 只查虚拟道具——礼物不做等级解锁（那是家长和孩子谈好的约定）。
-  const balls = await prisma.ballType.findMany({
-    where: { childId, active: true, unlockLevel: { gt: child.level, lte: target } },
-    select: { title: true },
-  });
-
-  return { level: target, title: levelTitle(target), unlocked: balls.map((b) => b.title) };
+  return { level: target, title: levelTitle(target) };
 }
 
 /**
- * 等级之路：每一级要多少累计阳光、叫什么、解锁什么道具。
+ * 等级之路：每一级要多少累计阳光、叫什么。
  *
- * 为什么要有这一份：道具锁着但看不到路线图，孩子的体验就只是"东西少了"。
- * 得让他清楚看到"再打多少卡就有新球"、以及尽头在哪儿，锁才会变成动力而不是挫折。
+ * 为什么要有这一页：等级如果只在角落里显示一个数字，孩子看不出它通向哪儿。
+ * 摊开全部 15 级，他就知道自己在整条路的什么位置、尽头长什么样。
+ *
+ * 这里**没有"解锁什么"这一列**。加过两轮都撤回了：礼物是家长和孩子谈好的约定、
+ * 藏起来像是反悔；精灵球本来就用价格分了档（8/20/45/200），再叠一层等级是重复的闸。
+ * 等级现在是纯粹的称号系统——每升一级换一个头衔，就是它全部的奖励。
  */
 export type LevelRoadmapEntry = {
   level: number;
   title: string;
   need: number;
-  unlocks: { title: string; emoji: string | null }[];
   reached: boolean;
   current: boolean;
 };
 
-export async function getLevelRoadmap(
-  childId: string,
-  level: number,
-  theme: KidTheme
-): Promise<LevelRoadmapEntry[]> {
-  // 按主题过滤：花园主题的孩子根本看不到精灵球，路线图上摆一排精灵球是纯误导。
-  // （花园的植物走的是另一条线——按收获轮数升级，见 lib/garden.ts 的 GARDEN_STAGES，
-  //  等级不该再插一脚，两套门槛叠在一起谁也说不清什么时候能拿到。）
-  const balls =
-    theme === KidTheme.POKEDEX
-      ? await prisma.ballType.findMany({
-          where: { childId, active: true },
-          select: { title: true, emoji: true, unlockLevel: true },
-          orderBy: { cost: "asc" },
-        })
-      : [];
-
+export function getLevelRoadmap(level: number): LevelRoadmapEntry[] {
   return LEVELS.map((lv, i) => ({
     level: i + 1,
     title: lv.title,
     need: lv.need,
-    unlocks: balls
-      .filter((b) => b.unlockLevel === i + 1)
-      .map((b) => ({ title: b.title, emoji: b.emoji })),
     reached: i + 1 <= level,
     current: i + 1 === level,
   }));
