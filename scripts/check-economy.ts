@@ -32,6 +32,7 @@ import {
   checkLevelUp,
   LEVELS,
   levelForEarned,
+  getLevelRoadmap,
   levelProgress,
   MAX_LEVEL,
   totalEarned,
@@ -479,13 +480,29 @@ async function main() {
       3
     );
 
-    // 升级要报出这次解锁了什么
+    // 升级要报出这次解锁了什么。**只报虚拟道具**——礼物不做等级解锁，
+    // 那是家长和孩子谈好的约定，藏起来像是反悔。
     await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });
     await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
     await earn(LEVELS[1].need, "TASK_COMPLETE");
     const lvUp2 = await checkLevelUp(child.id);
-    if (lvUp2?.unlocked.includes("周末去哪玩我决定")) pass("升级时报出了新解锁的礼物");
-    else fail("解锁清单", `报的是 ${JSON.stringify(lvUp2?.unlocked)}`);
+    expect("升级时报出新解锁的精灵球", lvUp2?.unlocked, ["超级球"]);
+
+    // 路线图：每一级都要有内容，孩子得看得见尽头在哪儿
+    const roadmap = await getLevelRoadmap(child.id, 2, "POKEDEX");
+    expect("路线图覆盖全部等级", roadmap.length, MAX_LEVEL);
+    expect("已达成的标记", roadmap.filter((r) => r.reached).map((r) => r.level), [1, 2]);
+    expect("当前那一级", roadmap.find((r) => r.current)?.level, 2);
+    expect(
+      "花园主题看不到精灵球（那是另一条线上的东西）",
+      (await getLevelRoadmap(child.id, 2, "GARDEN")).every((r) => r.unlocks.length === 0),
+      true
+    );
+    expect(
+      "各级解锁的精灵球",
+      roadmap.filter((r) => r.unlocks.length > 0).map((r) => `${r.level}:${r.unlocks.map((u) => u.title).join(",")}`),
+      ["1:精灵球", "2:超级球", "3:高级球", "5:大师球"]
+    );
 
     await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
     await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });

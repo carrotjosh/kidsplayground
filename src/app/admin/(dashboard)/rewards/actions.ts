@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
-import { MAX_LEVEL } from "@/lib/level";
 
 function revalidateRewardPaths() {
   revalidatePath("/admin/rewards");
@@ -20,7 +19,6 @@ type ParsedReward =
       cost: number;
       emoji: string | null;
       cooldownDays: number | null;
-      unlockLevel: number;
     }
   | { ok: false; error: string };
 
@@ -42,10 +40,7 @@ function parseReward(formData: FormData): ParsedReward {
     cooldownDays = parsed;
   }
 
-  // 表单来的值不可信，夹到 1~MAX_LEVEL。填了个 99 也不该让礼物永远出不来。
-  const unlockLevel = Math.min(Math.max(Math.round(Number(formData.get("unlockLevel")) || 1), 1), MAX_LEVEL);
-
-  return { ok: true, title, cost, emoji, cooldownDays, unlockLevel };
+  return { ok: true, title, cost, emoji, cooldownDays };
 }
 
 export async function createRewardAction(
@@ -65,7 +60,6 @@ export async function createRewardAction(
       emoji: parsed.emoji,
       cost: parsed.cost,
       cooldownDays: parsed.cooldownDays,
-      unlockLevel: parsed.unlockLevel,
     },
   });
 
@@ -92,7 +86,6 @@ export async function updateRewardAction(
       emoji: parsed.emoji,
       cost: parsed.cost,
       cooldownDays: parsed.cooldownDays,
-      unlockLevel: parsed.unlockLevel,
     },
   });
   if (result.count === 0) return "礼物不存在";

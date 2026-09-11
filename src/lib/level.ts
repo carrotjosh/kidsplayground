@@ -1,6 +1,6 @@
-import { LedgerType } from "@/generated/prisma/client";
+import { KidTheme, LedgerType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { levelForEarned, levelTitle } from "@/lib/levelTable";
+import { LEVELS, levelForEarned, levelTitle } from "@/lib/levelTable";
 
 /**
  * 打卡等级。
@@ -74,20 +74,55 @@ export async function checkLevelUp(
   if (updated.count === 0) return null;
 
   // 顺带告诉孩子这次开了什么。跨级时把中间几级解锁的也一起报出来。
-  const [rewards, balls] = await Promise.all([
-    prisma.reward.findMany({
-      where: { childId, active: true, unlockLevel: { gt: child.level, lte: target } },
-      select: { title: true },
-    }),
-    prisma.ballType.findMany({
-      where: { childId, active: true, unlockLevel: { gt: child.level, lte: target } },
-      select: { title: true },
-    }),
-  ]);
+  // 只查虚拟道具——礼物不做等级解锁（那是家长和孩子谈好的约定）。
+  const balls = await prisma.ballType.findMany({
+    where: { childId, active: true, unlockLevel: { gt: child.level, lte: target } },
+    select: { title: true },
+  });
 
-  return {
-    level: target,
-    title: levelTitle(target),
-    unlocked: [...rewards, ...balls].map((r) => r.title),
-  };
+  return { level: target, title: levelTitle(target), unlocked: balls.map((b) => b.title) };
+}
+
+/**
+ * 等级之路：每一级要多少累计阳光、叫什么、解锁什么道具。
+ *
+ * 为什么要有这一份：道具锁着但看不到路线图，孩子的体验就只是"东西少了"。
+ * 得让他清楚看到"再打多少卡就有新球"、以及尽头在哪儿，锁才会变成动力而不是挫折。
+ */
+export type LevelRoadmapEntry = {
+  level: number;
+  title: string;
+  need: number;
+  unlocks: { title: string; emoji: string | null }[];
+  reached: boolean;
+  current: boolean;
+};
+
+export async function getLevelRoadmap(
+  childId: string,
+  level: number,
+  theme: KidTheme
+): Promise<LevelRoadmapEntry[]> {
+  // 按主题过滤：花园主题的孩子根本看不到精灵球，路线图上摆一排精灵球是纯误导。
+  // （花园的植物走的是另一条线——按收获轮数升级，见 lib/garden.ts 的 GARDEN_STAGES，
+  //  等级不该再插一脚，两套门槛叠在一起谁也说不清什么时候能拿到。）
+  const balls =
+    theme === KidTheme.POKEDEX
+      ? await prisma.ballType.findMany({
+          where: { childId, active: true },
+          select: { title: true, emoji: true, unlockLevel: true },
+          orderBy: { cost: "asc" },
+        })
+      : [];
+
+  return LEVELS.map((lv, i) => ({
+    level: i + 1,
+    title: lv.title,
+    need: lv.need,
+    unlocks: balls
+      .filter((b) => b.unlockLevel === i + 1)
+      .map((b) => ({ title: b.title, emoji: b.emoji })),
+    reached: i + 1 <= level,
+    current: i + 1 === level,
+  }));
 }

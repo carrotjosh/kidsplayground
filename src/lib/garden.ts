@@ -423,6 +423,52 @@ export async function checkGardenStageUp(
   return { stage, side: gardenSide(stage), unlockedPlant: next.title };
 }
 
+/**
+ * 花园之路：每一级多大、要收获几轮才到、会解锁哪种植物。
+ *
+ * 和等级之路是**两条独立的线**：等级看累计打卡挣的阳光，花园看收获了几轮。
+ * 不合并是因为叠两套门槛之后，"我到底什么时候能拿到寒冰射手"就说不清了。
+ * 但孩子同样需要看见花园这条线的尽头，所以单独给一份。
+ */
+export type GardenRoadmapEntry = {
+  stage: number;
+  side: number;
+  size: number;
+  /** 到这一级需要累计收获几轮 */
+  needRounds: number;
+  unlocks: { title: string; emoji: string | null }[];
+  reached: boolean;
+  current: boolean;
+};
+
+export async function getGardenRoadmap(
+  childId: string,
+  stage: number
+): Promise<GardenRoadmapEntry[]> {
+  // 解锁顺序 = 价格升序（见 lib/bootstrap.ts 的 DEFAULT_PLANT_TYPES 注释）
+  const types = await prisma.plantType.findMany({
+    where: { childId },
+    select: { title: true, emoji: true },
+    orderBy: { cost: "asc" },
+  });
+
+  return GARDEN_STAGES.map((side, i) => {
+    const stageNo = i + 1;
+    // 第 1 级用掉前 gardenSetSize(1) 种，之后每级多用一种
+    const from = i === 0 ? 0 : gardenSetSize(1) + i - 1;
+    const to = gardenSetSize(1) + i;
+    return {
+      stage: stageNo,
+      side,
+      size: side * side,
+      needRounds: i * HARVEST_ROUNDS_PER_STAGE,
+      unlocks: types.slice(from, to).map((t) => ({ title: t.title, emoji: t.emoji })),
+      reached: stageNo <= stage,
+      current: stageNo === stage,
+    };
+  });
+}
+
 /** 已经收获过几轮花园。用 GARDEN_BONUS 流水条数来数，不需要在 Child 上额外存一个计数字段。 */
 export async function getHarvestedRounds(childId: string): Promise<number> {
   return prisma.pointsLedger.count({

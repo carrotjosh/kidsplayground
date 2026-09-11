@@ -82,7 +82,7 @@ export default async function KidHomePage({
               <Pinyin text={formatDateWithWeekday(today)} />
             </p>
           </div>
-          <LevelBadge progress={progress} />
+          <LevelBadge progress={progress} href={`/kid/${slug}/level`} />
           <PointsBadge balance={balance} />
         </div>
       </header>

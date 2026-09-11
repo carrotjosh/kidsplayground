@@ -35,20 +35,17 @@ export const DEFAULT_DAILY_GOAL = 20;
  * "今晚吃什么我决定"这类不花钱但他很在乎的事情上，掏钱的项自然被挤到低频。
  * 光靠调价控制支出效果差得多（涨价打击积极性），冷却天数才是真正锁住月支出上限的旋钮。
  *
- * unlockLevel 是第二道闸：越贵的越晚露面（见 lib/level.ts）。
- * 分配原则是**等级门槛要跟在价格门槛后面，而不是走在前面**——
- * 孩子攒够钱的时候差不多刚好到那一级，所以等级几乎不会真的挡住他，
- * 它只负责控制"什么时候看见"。一上来就摆出攒 40 天才买得起的东西，那不是目标是噪音。
- * Lv6 以上留空，正是给家长放"迪士尼"这种超大愿望的位置。
+ * 礼物**刻意不做等级解锁**（精灵球那类虚拟道具才做）。礼物是家长和孩子一起商量
+ * 定下来的约定，把已经谈好的东西藏起来像是反悔——控制节奏该用价格和冷却，不该用可见性。
  */
 const DEFAULT_REWARDS = [
-  { title: "看30分钟动画片", emoji: "📺", cost: 15, cooldownDays: 1, unlockLevel: 1 },
-  { title: "今晚吃什么我决定", emoji: "🍜", cost: 20, cooldownDays: 1, unlockLevel: 1 },
-  { title: "周末去哪玩我决定", emoji: "🗺️", cost: 40, cooldownDays: 7, unlockLevel: 2 },
-  { title: "买一本新书", emoji: "📚", cost: 120, cooldownDays: 14, unlockLevel: 3 },
-  { title: "去餐厅吃饭", emoji: "🍕", cost: 150, cooldownDays: 7, unlockLevel: 4 },
-  { title: "一个小玩具", emoji: "🧸", cost: 500, cooldownDays: 30, unlockLevel: 4 },
-  { title: "去游乐场玩一次", emoji: "🎠", cost: 600, cooldownDays: 30, unlockLevel: 5 },
+  { title: "看30分钟动画片", emoji: "📺", cost: 15, cooldownDays: 1 },
+  { title: "今晚吃什么我决定", emoji: "🍜", cost: 20, cooldownDays: 1 },
+  { title: "周末去哪玩我决定", emoji: "🗺️", cost: 40, cooldownDays: 7 },
+  { title: "买一本新书", emoji: "📚", cost: 120, cooldownDays: 14 },
+  { title: "去餐厅吃饭", emoji: "🍕", cost: 150, cooldownDays: 7 },
+  { title: "一个小玩具", emoji: "🧸", cost: 500, cooldownDays: 30 },
+  { title: "去游乐场玩一次", emoji: "🎠", cost: 600, cooldownDays: 30 },
 ];
 
 /**

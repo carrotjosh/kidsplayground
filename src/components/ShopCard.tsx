@@ -16,7 +16,6 @@ export function ShopCard({
   title,
   cost,
   note,
-  lockedAtLevel,
   children,
 }: {
   emoji: string;
@@ -26,34 +25,9 @@ export function ShopCard({
   cost: number;
   /** 副说明，比如"每周最多一次"。传 null 也会占位，保证一排按钮齐平。 */
   note?: string | null;
-  /**
-   * 还没解锁时传进来的等级要求。传了就把整张卡片变灰、盖一层"Lv.N 解锁"，
-   * 而不是干脆不显示——看得见够不着才是目标，看不见就只是不存在。
-   */
-  lockedAtLevel?: number | null;
   /** 底部的操作按钮 */
   children: ReactNode;
 }) {
-  if (lockedAtLevel) {
-    return (
-      <div className="pixel-card flex h-full flex-col items-center gap-2 bg-slate-100 p-4 text-center">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center text-5xl leading-none opacity-30 grayscale lg:h-16 lg:w-16 lg:text-6xl">
-          {art ?? emoji}
-        </div>
-        <div className="flex flex-1 items-center">
-          <p className="kid-text text-lg text-slate-400 lg:text-xl">
-            <Pinyin text={title} />
-          </p>
-        </div>
-        <p className="pixel-font text-[10px] text-slate-400 lg:text-xs">{cost} ☀️</p>
-        <p className="min-h-4 text-xs text-slate-400"> </p>
-        <p className="pixel-border kid-text w-full bg-slate-300 px-3 py-2 text-base text-slate-600 lg:text-lg">
-          🔒 <Pinyin text={`${lockedAtLevel} 级解锁`} />
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="pixel-card flex h-full flex-col items-center gap-2 bg-white p-4 text-center">
       {/* 图框固定高度：插画和 emoji 占的位置一样大，换哪种都不会把下面的内容顶歪 */}

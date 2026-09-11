@@ -64,7 +64,6 @@ export function RewardRow({
         </p>
         <p className="text-sm text-slate-500">
           {formatCooldown(reward.cooldownDays)}
-          {reward.unlockLevel > 1 && ` · Lv.${reward.unlockLevel} 解锁`}
         </p>
       </div>
 

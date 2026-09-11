@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { CreatureCard } from "@/components/CreatureCard";
@@ -196,13 +197,18 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           />
         )}
 
-        {/* 还没解锁的球：不进扔球选项，但要让孩子知道有更好的可以盼 */}
+        {/* 还没解锁的球：不进扔球选项（那是"挑一个扔出去"的界面，摆个点不动的只是噪音），
+            但一定要让孩子知道有更好的可以盼，并且点得进去看完整的等级之路——
+            锁本身不是动力，看得见的目标才是 */}
         {lockedBalls.length > 0 && (
-          <p className="kid-text text-sm text-white lg:text-base">
+          <Link
+            href={`/kid/${slug}/level`}
+            className="pixel-card kid-text bg-white p-3 text-center text-base text-slate-600 lg:text-lg"
+          >
             <Pinyin
-              text={`🔒 ${lockedBalls.map((b) => `${b.title}（${b.unlockLevel} 级）`).join("、")} 还没解锁`}
+              text={`🔒 ${lockedBalls.map((b) => `${b.title} 要 ${b.unlockLevel} 级`).join("、")}，点这里看等级之路 →`}
             />
-          </p>
+          </Link>
         )}
 
         {child.catchMissStreak > 0 && (

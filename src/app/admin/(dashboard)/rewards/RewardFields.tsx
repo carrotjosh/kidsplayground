@@ -3,14 +3,12 @@
 import { useState } from "react";
 
 import { EmojiPicker, REWARD_EMOJI_GROUPS } from "@/components/EmojiPicker";
-import { LEVELS } from "@/lib/levelTable";
 
 export type RewardFieldValues = {
   title: string;
   cost: number;
   emoji: string | null;
   cooldownDays: number | null;
-  unlockLevel: number;
 };
 
 const COOLDOWN_PRESETS = [
@@ -98,29 +96,6 @@ export function RewardFields({ initial }: { initial?: RewardFieldValues }) {
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <span className="text-xs text-slate-500">几级解锁</span>
-        <select
-          name="unlockLevel"
-          defaultValue={String(initial?.unlockLevel ?? 1)}
-          className="w-72 rounded-none border-2 border-nes-black px-3 py-2"
-        >
-          {LEVELS.map((lv, i) => (
-            <option key={i} value={i + 1}>
-              Lv.{i + 1} {lv.title}
-              {i > 0 && `（累计打卡挣满 ${lv.need} 阳光）`}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-slate-400">
-          没到这一级，孩子在商店里会看到一张灰色的「N 级解锁」卡片——
-          看得见够不着才是目标，直接藏起来就只是不存在。
-          <br />
-          定级原则是<b>让等级跟在价格后面</b>：孩子攒够钱的时候差不多刚好到那一级，
-          于是等级几乎不会真的挡住他，只负责控制「什么时候看见」。
-          大愿望（比如迪士尼）放到高等级，能天然把你的现金支出往后推。
-        </p>
-      </div>
     </>
   );
 }

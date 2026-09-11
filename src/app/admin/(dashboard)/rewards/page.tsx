@@ -30,7 +30,6 @@ export default async function RewardsAdminPage() {
                 cost: reward.cost,
                 emoji: reward.emoji,
                 cooldownDays: reward.cooldownDays,
-                unlockLevel: reward.unlockLevel,
                 active: reward.active,
               }}
             />
