@@ -29,6 +29,14 @@ import {
 } from "../src/lib/economy";
 import { auditEconomy, recalibrationPreview } from "../src/lib/economyAudit";
 import {
+  checkLevelUp,
+  LEVELS,
+  levelForEarned,
+  levelProgress,
+  MAX_LEVEL,
+  totalEarned,
+} from "../src/lib/level";
+import {
   checkGardenStageUp,
   computeHarvestBonus,
   gardenSetSize,
@@ -427,6 +435,60 @@ async function main() {
       where: { id: child.id },
       data: { theme: "POKEDEX", gardenStage: 1 },
     });
+
+    // ---------- 打卡等级 ----------
+    // 等级只能反映"干了多少活"。算进花园收获/图鉴奖励的话，花园孩子刷一轮就升级、
+    // 图鉴孩子净吞 56% 反而升得慢，同一张等级表对两个主题就不公平了。
+    console.log("\n【等级】只算打卡挣的阳光，且只增不减");
+    if (LEVELS.every((l, i) => i === 0 || l.need > LEVELS[i - 1].need)) pass("门槛严格递增");
+    else fail("等级门槛", "不是严格递增的");
+    expect("Lv1 门槛是 0", LEVELS[0].need, 0);
+    expect("空账号是 1 级", levelForEarned(0), 1);
+    expect(`挣满 ${LEVELS[1].need} 到 2 级`, levelForEarned(LEVELS[1].need), 2);
+    expect("差 1 点不升级", levelForEarned(LEVELS[1].need - 1), 1);
+    expect("挣爆表也不超过最高级", levelForEarned(9_999_999), MAX_LEVEL);
+    expect("满级后没有下一级门槛", levelProgress(MAX_LEVEL, 9_999_999).next, null);
+
+    await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+    const earn = (amount: number, type: "TASK_COMPLETE" | "GARDEN_BONUS" | "POKEDEX_BONUS" | "MANUAL_ADJUST" | "TASK_REVOKE") =>
+      prisma.pointsLedger.create({ data: { childId: child.id, amount, reason: "等级测试", type } });
+
+    await earn(100, "TASK_COMPLETE");
+    await earn(5000, "GARDEN_BONUS");
+    await earn(5000, "POKEDEX_BONUS");
+    await earn(5000, "MANUAL_ADJUST");
+    expect("花园/图鉴/手动加分都不计入等级", await totalEarned(child.id), 100);
+
+    await earn(-30, "TASK_REVOKE");
+    expect("撤销打卡从累计里扣掉", await totalEarned(child.id), 70);
+
+    await earn(LEVELS[2].need, "TASK_COMPLETE");
+    const lvUp = await checkLevelUp(child.id);
+    expect("挣够之后升级到", lvUp?.level, 3);
+    expect("称号", lvUp?.title, LEVELS[2].title);
+    if ((await checkLevelUp(child.id)) === null) pass("再调一次不重复升级（幂等）");
+    else fail("升级幂等", "又升了一次");
+
+    // 只增不减：把累计值砍回去，等级不能掉
+    await earn(-LEVELS[2].need, "TASK_REVOKE");
+    expect("撤销后累计值回落", await totalEarned(child.id), 70);
+    await checkLevelUp(child.id);
+    expect(
+      "等级不会掉回去",
+      (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).level,
+      3
+    );
+
+    // 升级要报出这次解锁了什么
+    await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });
+    await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+    await earn(LEVELS[1].need, "TASK_COMPLETE");
+    const lvUp2 = await checkLevelUp(child.id);
+    if (lvUp2?.unlocked.includes("周末去哪玩我决定")) pass("升级时报出了新解锁的礼物");
+    else fail("解锁清单", `报的是 ${JSON.stringify(lvUp2?.unlocked)}`);
+
+    await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+    await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });
 
     // ---------- 6. 图鉴分地区解锁 ----------
     console.log("\n【图鉴】按收集进度分地区解锁");

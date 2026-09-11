@@ -3,11 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { CreatureCard } from "@/components/CreatureCard";
 import { KidNavBar } from "@/components/KidNavBar";
 import { Pinyin } from "@/components/Pinyin";
+import { LevelUpBanner } from "@/components/LevelUpBanner";
 import { PointsBadge } from "@/components/PointsBadge";
 import { BallTier, CaughtStatus, KidTheme } from "@/generated/prisma/client";
 import { dateStringToUtcDate, todayDateString } from "@/lib/date";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
+import { checkLevelUp } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
 import { dailyEarnRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
 import {
@@ -43,6 +45,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 放后面的话今天的名单已经按旧上限摇好了，新地区要等到明天才可能出现，
   // "开放新地区"那个瞬间的惊喜就没了。
   const unlocked = await checkRegionUnlock(child.id);
+  const levelUp = await checkLevelUp(child.id);
+  const level = levelUp?.level ?? child.level;
 
   // 今天遇到谁：一天只生成一次，刷新页面不会重摇（否则一直刷就能刷出传说）
   const today = todayDateString();
@@ -56,7 +60,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 刚解锁的话 child 里还是旧值，用 checkRegionUnlock 返回的新上限
   const ceiling = unlocked ? unlocked.ceiling : regionCeiling(child.pokedexRegion);
 
-  const [caught, balls, balance, totalSpecies, encounters] = await Promise.all([
+  const [caught, allBalls, balance, totalSpecies, encounters] = await Promise.all([
     prisma.caught.findMany({
       where: { childId: child.id },
       orderBy: [{ rarity: "desc" }, { caughtAt: "desc" }],
@@ -72,6 +76,11 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       orderBy: { slot: "asc" },
     }),
   ]);
+
+  // 没解锁的球不进扔球选项——那是个"挑一个球扔出去"的界面，摆一个点不动的选项只是噪音。
+  // 但要在下面单独提一句它的存在，不然孩子根本不知道还有更好的球可以盼。
+  const balls = allBalls.filter((b) => b.unlockLevel <= level);
+  const lockedBalls = allBalls.filter((b) => b.unlockLevel > level);
 
   const owned = caught.filter((c) => c.status === CaughtStatus.OWNED);
   const fled = caught.filter((c) => c.status === CaughtStatus.FLED);
@@ -107,6 +116,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </h1>
         <PointsBadge balance={balance} />
       </header>
+
+      {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
       {/* 新地区开放。这是分批解锁最主要的动机来源，位置放在最上面 */}
       {unlocked && (
@@ -183,6 +194,15 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             }
             confirmText={`花 ${nextRefreshCost} 阳光换两只新的？已经抓到的会留着。`}
           />
+        )}
+
+        {/* 还没解锁的球：不进扔球选项，但要让孩子知道有更好的可以盼 */}
+        {lockedBalls.length > 0 && (
+          <p className="kid-text text-sm text-white lg:text-base">
+            <Pinyin
+              text={`🔒 ${lockedBalls.map((b) => `${b.title}（${b.unlockLevel} 级）`).join("、")} 还没解锁`}
+            />
+          </p>
         )}
 
         {child.catchMissStreak > 0 && (

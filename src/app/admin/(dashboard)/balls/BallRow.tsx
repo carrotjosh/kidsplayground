@@ -5,17 +5,27 @@ import { useActionState } from "react";
 import { BallSprite } from "@/components/BallSprite";
 import type { BallTier } from "@/generated/prisma/client";
 
-import { toggleBallActiveAction, updateBallCostAction } from "./actions";
+import { LEVELS } from "@/lib/levelTable";
+
+import { toggleBallActiveAction, updateBallAction } from "./actions";
 
 export function BallRow({
   ball,
   caughtCount,
 }: {
-  ball: { id: string; tier: BallTier; title: string; cost: number; catchPower: number; active: boolean };
+  ball: {
+    id: string;
+    tier: BallTier;
+    title: string;
+    cost: number;
+    catchPower: number;
+    unlockLevel: number;
+    active: boolean;
+  };
   caughtCount: number;
 }) {
   const [error, formAction, isPending] = useActionState(
-    updateBallCostAction.bind(null, ball.id),
+    updateBallAction.bind(null, ball.id),
     null
   );
 
@@ -31,6 +41,7 @@ export function BallRow({
           <p className="text-sm text-slate-500">
             抓取倍率 ×{ball.catchPower}
             {ball.tier === "MASTER" && "（必中）"} · 用它抓到过 {caughtCount} 只
+            {ball.unlockLevel > 1 && ` · Lv.${ball.unlockLevel} 解锁`}
           </p>
         </div>
       </div>
@@ -45,12 +56,23 @@ export function BallRow({
             className="w-24 rounded-none border-2 border-nes-black px-2 py-1"
           />
           <span className="text-sm text-slate-500">阳光</span>
+          <select
+            name="unlockLevel"
+            defaultValue={String(ball.unlockLevel)}
+            className="rounded-none border-2 border-nes-black px-2 py-1 text-sm"
+          >
+            {LEVELS.map((lv, i) => (
+              <option key={i} value={i + 1}>
+                Lv.{i + 1} 解锁
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             disabled={isPending}
             className="pixel-btn bg-white px-3 py-1 text-sm text-slate-700 disabled:opacity-50"
           >
-            {isPending ? "…" : "改价"}
+            {isPending ? "…" : "保存"}
           </button>
         </form>
 

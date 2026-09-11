@@ -6,8 +6,10 @@ import { collectionNavItem } from "@/lib/theme";
 import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
 import { ShopCard } from "@/components/ShopCard";
+import { LevelUpBanner } from "@/components/LevelUpBanner";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
+import { checkLevelUp } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
 import { formatCooldown, getCooldownStates } from "@/lib/rewards";
 
@@ -24,10 +26,15 @@ export default async function RewardsPage({
   const child = await getChildBySlug(slug);
   if (!child) notFound();
 
+  // 升级检查放在渲染之前：孩子刚打完卡跳过来，新解锁的礼物这一次就该看得见
+  const levelUp = await checkLevelUp(child.id);
+  const level = levelUp?.level ?? child.level;
+
   const [rewards, balance] = await Promise.all([
+    // 未解锁的也查出来（灰着显示）：看得见够不着才是目标，看不见就只是不存在
     prisma.reward.findMany({
       where: { childId: child.id, active: true },
-      orderBy: { cost: "asc" },
+      orderBy: [{ unlockLevel: "asc" }, { cost: "asc" }],
     }),
     getPointsBalance(child.id),
   ]);
@@ -43,6 +50,8 @@ export default async function RewardsPage({
         <PointsBadge balance={balance} />
       </header>
 
+      {levelUp && <LevelUpBanner levelUp={levelUp} />}
+
       {/* 和花园页的植物卡片用同一套断点，两页的卡片节奏一致 */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {rewards.length === 0 ? (
@@ -51,6 +60,7 @@ export default async function RewardsPage({
           </p>
         ) : (
           rewards.map((reward) => {
+            const locked = reward.unlockLevel > level;
             const enough = balance >= reward.cost;
             const cooling = cooldowns.get(reward.id);
             const onCooldown = cooling ? !cooling.available : false;
@@ -69,11 +79,12 @@ export default async function RewardsPage({
                 title={reward.title}
                 cost={reward.cost}
                 note={reward.cooldownDays ? formatCooldown(reward.cooldownDays) : null}
+                lockedAtLevel={locked ? reward.unlockLevel : null}
               >
                 <ConfirmActionButton
                   action={redeemRewardAction.bind(null, slug, reward.id)}
                   confirmText={`确定用 ${reward.cost} 阳光兑换${reward.title}吗？`}
-                  disabled={!enough || onCooldown}
+                  disabled={locked || !enough || onCooldown}
                   label={label}
                   tone="pink"
                 />

@@ -85,6 +85,11 @@ model Child {
   // 免得一年级孩子攒了一周的阳光连着空手、直接放弃。
   catchMissStreak Int @default(0)
 
+  // 打卡等级。按**累计打卡挣到的阳光**升级，只增不减（见 lib/level.ts）。
+  // 存历史最高水位而不是每次现算：撤销打卡会让累计值往回退，现算的话孩子可能眼看着掉级，
+  // 那对一年级孩子是纯打击。升级会解锁礼物商店和精灵球里更贵的东西。
+  level Int @default(1)
+
   // 花园已经长到第几级：1 是 4×4、2 是 5×5、3 是 6×6（见 lib/garden.ts 的 GARDEN_STAGES）。
   // 和图鉴分地区解锁同构：不这么做的话花园第 2 轮和第 20 轮一模一样，
   // 四种植物、十六个格子，孩子玩三轮就腻了。每升一级多一种植物、格子多一圈。
@@ -262,6 +267,11 @@ model Reward {
   title     String
   emoji     String?
   cost      Int
+  // 要到几级才在孩子端出现。默认 1 = 一开始就能看到（现有礼物一律保持可见，
+  // 不会因为上线这个功能就有东西从孩子眼前消失）。
+  // 让礼物商店有进度感：新孩子一上来就看到「迪士尼 2500」不是目标、是噪音，
+  // 而且大愿望藏到后面也天然延后了家长的现金支出。
+  unlockLevel Int     @default(1)
   // 兑换冷却：距上次兑换要间隔多少天才能再换。null = 不限次数。
   // 用"滚动天数"而不是自然周/月，规则对孩子更直观：上次换完就开始倒计时。
   cooldownDays Int?
@@ -395,6 +405,9 @@ model BallType {
   title      String
   emoji      String?
   cost       Int
+  // 要到几级才在孩子端出现，同 Reward.unlockLevel。
+  // 不这么做的话新孩子第一天就能攒 200 买大师球，还没搞懂玩法就把压箱底的牌打了。
+  unlockLevel Int     @default(1)
   catchPower Float // 抓取率倍率
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())

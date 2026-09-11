@@ -62,7 +62,10 @@ export function RewardRow({
           {reward.emoji} {reward.title}（{reward.cost} 阳光）
           {!reward.active && <span className="ml-2 text-xs text-slate-400">已下架</span>}
         </p>
-        <p className="text-sm text-slate-500">{formatCooldown(reward.cooldownDays)}</p>
+        <p className="text-sm text-slate-500">
+          {formatCooldown(reward.cooldownDays)}
+          {reward.unlockLevel > 1 && ` · Lv.${reward.unlockLevel} 解锁`}
+        </p>
       </div>
 
       <div className="flex shrink-0 gap-2">
