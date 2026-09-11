@@ -14,10 +14,10 @@ import "dotenv/config";
 
 import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
-import { CaughtStatus, Gender, ScheduleType } from "../src/generated/prisma/client";
+import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
 import { purgeTestTenants } from "../src/lib/testTenant";
-import { addDays, dateStringToUtcDate, todayAsUtcDate, todayDateString } from "../src/lib/date";
+import { addDays, dateStringToUtcDate, todayDateString } from "../src/lib/date";
 import {
   dailyEarnRate,
   dailyEarnRateFromTemplates,
@@ -46,15 +46,16 @@ import {
   GARDEN_STAGES,
   HARVEST_MAX_INTEREST_DAYS,
   HARVEST_MAX_MULTIPLIER,
-  HARVEST_ROUNDS_PER_STAGE,
+  gardenStageForLevel,
+  GARDEN_STAGE_LEVELS,
   settleGardenForChild,
 } from "../src/lib/garden";
 import {
-  checkRegionUnlock,
   ensureTodayEncounters,
-  REGION_UNLOCK_RATIO,
   REGIONS,
-  regionCeiling,
+  regionAt,
+  SPECIES_CEILING_BY_LEVEL,
+  speciesCeilingForLevel,
 } from "../src/lib/pokedex";
 
 const MARK = "__econ_check__";
@@ -374,33 +375,36 @@ async function main() {
     });
 
     // ---------- 花园分级 ----------
-    // 原来花园永远是 4×4、永远那四种植物，第 2 轮和第 20 轮一模一样。
-    console.log("\n【花园】每收获几轮升一级：格子多一圈、解锁一种新植物");
-    expect("各级边长", [...GARDEN_STAGES], [4, 5, 6]);
+    console.log("\n【花园】按打卡等级升级，但要等这一园收获掉才生效");
+    expect("各级边长", [...GARDEN_STAGES], [4, 5, 6, 7]);
+    expect("各级要求的等级", [...GARDEN_STAGE_LEVELS], [1, 4, 8, 12]);
+    expect("第 1 级：4 种 × 各 4 棵 = 16 格", [gardenSetSize(1), gardenSize(1)], [4, 16]);
+    expect("第 4 级：7 种 × 各 7 棵 = 49 格", [gardenSetSize(4), gardenSize(4)], [7, 49]);
+    expect("越界的级数夹到最大级", gardenSide(99), 7);
     expect(
-      "第 1 级：4 种 × 各 4 棵 = 16 格",
-      [gardenSetSize(1), gardenSize(1)],
-      [4, 16]
+      "等级 → 该到第几级花园",
+      [1, 3, 4, 7, 8, 11, 12, 15].map(gardenStageForLevel),
+      [1, 1, 2, 2, 3, 3, 4, 4]
     );
-    expect("第 3 级：6 种 × 各 6 棵 = 36 格", [gardenSetSize(3), gardenSize(3)], [6, 36]);
-    expect("越界的级数夹到最大级", gardenSide(99), 6);
 
-    const activeAtStart = await prisma.plantType.count({
-      where: { childId: child.id, active: true },
+    expect("新建档案默认上架的植物种类", 
+      await prisma.plantType.count({ where: { childId: child.id, active: true } }),
+      gardenSetSize(1)
+    );
+    if ((await checkGardenStageUp(child.id)) === null) pass("1 级时不会升花园");
+    else fail("1 级升花园", "居然升了");
+
+    // 等级够了，但园子里还种着东西 → 先不升，免得刚集齐的一整套当场作废
+    await prisma.child.update({ where: { id: child.id }, data: { level: 4 } });
+    const holdPlant = await prisma.plant.create({
+      data: { childId: child.id, title: "占位", slot: 0, status: "ALIVE" },
     });
-    expect("新建档案默认上架的植物种类", activeAtStart, gardenSetSize(1));
+    if ((await checkGardenStageUp(child.id)) === null) pass("园子里还有植物时先不升级");
+    else fail("提前升级", "把孩子正在种的一园作废了");
 
-    if ((await checkGardenStageUp(child.id)) === null) pass("一轮都没收获时不会升级");
-    else fail("零收获升级", "居然升级了");
-
-    // 伪造够数的收获流水（真跑一轮要种满 16 棵，这里只验升级判定本身）
-    for (let i = 0; i < HARVEST_ROUNDS_PER_STAGE; i++) {
-      await prisma.pointsLedger.create({
-        data: { childId: child.id, amount: 1, reason: `假收获 ${i}`, type: "GARDEN_BONUS" },
-      });
-    }
+    await prisma.plant.delete({ where: { id: holdPlant.id } });
     const up = await checkGardenStageUp(child.id);
-    expect(`收获满 ${HARVEST_ROUNDS_PER_STAGE} 轮后升到`, up?.stage, 2);
+    expect("收获空了之后升到", up?.stage, 2);
     expect("新边长", up?.side, 5);
     expect("顺带解锁的新植物", up?.unlockedPlant, "寒冰射手");
     expect(
@@ -408,33 +412,21 @@ async function main() {
       await prisma.plantType.count({ where: { childId: child.id, active: true } }),
       5
     );
-    if ((await checkGardenStageUp(child.id)) === null) pass("轮数不够下一级时不会连升（幂等）");
+    if ((await checkGardenStageUp(child.id)) === null) pass("等级不够下一级时不会连升（幂等）");
     else fail("连续升级", "又升了一级");
 
-    // 没有可解锁的品种时**不能**升级——升上去就是个永远集不齐的死局
-    for (let i = 0; i < HARVEST_ROUNDS_PER_STAGE; i++) {
-      await prisma.pointsLedger.create({
-        data: { childId: child.id, amount: 1, reason: `假收获 b${i}`, type: "GARDEN_BONUS" },
-      });
-    }
-    await prisma.plantType.updateMany({
-      where: { childId: child.id, active: false },
-      data: { active: true },
-    });
-    const blocked = await prisma.plantType.findMany({ where: { childId: child.id } });
-    await prisma.plantType.updateMany({
-      where: { childId: child.id, title: "大嘴花" },
-      data: { active: true },
-    });
-    if ((await checkGardenStageUp(child.id)) === null) pass("没有可解锁的新品种时拒绝升级");
-    else fail("死局保护", `在只有 ${blocked.length} 种植物时仍然升了级`);
+    // 等级跳很远也一次只升一级——每一级都该被玩过
+    await prisma.child.update({ where: { id: child.id }, data: { level: 15 } });
+    expect("等级直接跳到 15 也只升一级", (await checkGardenStageUp(child.id))?.stage, 3);
 
-    await prisma.pointsLedger.deleteMany({
-      where: { childId: child.id, type: "GARDEN_BONUS" },
-    });
+    await prisma.plantType.updateMany({ where: { childId: child.id }, data: { active: true } });
+    if ((await checkGardenStageUp(child.id)) === null) pass("没有可解锁的新品种时拒绝升级");
+    else fail("死局保护", "在没有备用品种时仍然升了级");
+
+    await prisma.pointsLedger.deleteMany({ where: { childId: child.id, type: "GARDEN_BONUS" } });
     await prisma.child.update({
       where: { id: child.id },
-      data: { theme: "POKEDEX", gardenStage: 1 },
+      data: { theme: "POKEDEX", gardenStage: 1, level: 1 },
     });
 
     // ---------- 打卡等级 ----------
@@ -492,63 +484,49 @@ async function main() {
     await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
     await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });
 
-    // ---------- 6. 图鉴分地区解锁 ----------
-    console.log("\n【图鉴】按收集进度分地区解锁");
-    expect("初始地区上限", regionCeiling(child.pokedexRegion), REGIONS[0].ceiling);
-    if ((await checkRegionUnlock(child.id)) === null) pass("一只都没抓时不会解锁");
-    else fail("空收集时解锁", "居然解锁了");
+    // ---------- 图鉴按等级放出 ----------
+    // 这里守着一条硬约束：**上限不能低于 151**。第一只传说是 #144，
+    // 上限低于它的话传说那一档一只都没有，摇到传说会退回随机挑一只普通的，
+    // 稀有度体系静默失效——这种错在界面上完全看不出来。
+    console.log("\n【图鉴】开放到第几号由打卡等级决定");
+    expect("等级表长度和图鉴上限表一致", SPECIES_CEILING_BY_LEVEL.length, MAX_LEVEL);
+    expect("Lv.1 就给满关都", speciesCeilingForLevel(1), 151);
+    expect("满级开放全部", speciesCeilingForLevel(MAX_LEVEL), 386);
+    expect("越界夹取", [speciesCeilingForLevel(0), speciesCeilingForLevel(99)], [151, 386]);
+    if (SPECIES_CEILING_BY_LEVEL.every((c, i) => i === 0 || c > SPECIES_CEILING_BY_LEVEL[i - 1]))
+      pass("上限严格递增，每一级都有新面孔");
+    else fail("图鉴上限", "不是严格递增的");
+    if (SPECIES_CEILING_BY_LEVEL.every((c) => c >= 151)) pass("任何等级的上限都 ≥151（传说档不会空）");
+    else fail("上限下界", "有等级低于 151，传说档会是空的");
+    expect("地区名对得上", [regionAt(151), regionAt(251), regionAt(386)], ["关都", "城都", "丰缘"]);
 
-    // 灌够 80% 的关都宝可梦
-    const need = Math.ceil(REGIONS[0].ceiling * REGION_UNLOCK_RATIO);
-    const species = await prisma.pokemonSpecies.findMany({
-      where: { id: { lte: REGIONS[0].ceiling } },
-      take: need,
-      orderBy: { id: "asc" },
-    });
-    if (species.length < need) {
-      fail("图鉴库", `只有 ${species.length} 只关都宝可梦，不够 ${need}，先跑 npm run db:seed-pokedex`);
-    } else {
-      await prisma.caught.createMany({
-        data: species.map((s) => ({
-          childId: child.id,
-          speciesId: s.id,
-          nameZh: s.nameZh,
-          types: s.types,
-          rarity: s.rarity,
-          gender: Gender.UNKNOWN,
-          ability: "测试",
-          moveName: s.moveName,
-          movePower: s.movePower,
-          hp: s.hp,
-          attack: s.attack,
-          defense: s.defense,
-          speed: s.speed,
-          ballTier: "POKE" as const,
-          artUrl: s.artUrl,
-          status: CaughtStatus.OWNED,
-          caughtOnDate: todayAsUtcDate(),
-        })),
+    // 每一档上限下四种稀有度都得有货，否则 createEncounters 会退回随机挑
+    for (const cap of SPECIES_CEILING_BY_LEVEL) {
+      const groups = await prisma.pokemonSpecies.groupBy({
+        by: ["rarity"],
+        where: { id: { lte: cap } },
+        _count: true,
       });
-      const unlocked = await checkRegionUnlock(child.id);
-      expect(`收集满 ${need}/151 后解锁`, unlocked?.name, REGIONS[1].name);
-      const reread = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
-      expect("Child.pokedexRegion", reread.pokedexRegion, 2);
-      if ((await checkRegionUnlock(child.id)) === null) pass("再调一次不会重复解锁（幂等）");
-      else fail("解锁幂等", "又解锁了一次");
-
-      // 新地区的宝可梦要真的能遇到：连摇 40 天，至少出现一只 id>151 的
-      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
-      let sawNewRegion = false;
-      for (let i = 0; i < 40 && !sawNewRegion; i++) {
-        const date = `2099-01-${String((i % 28) + 1).padStart(2, "0")}`;
-        await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
-        await ensureTodayEncounters(child.id, date);
-        const encs = await prisma.dailyEncounter.findMany({ where: { childId: child.id } });
-        if (encs.some((e) => e.speciesId > REGIONS[0].ceiling)) sawNewRegion = true;
+      if (groups.length !== 4) {
+        fail(`上限 ${cap} 的稀有度覆盖`, `只有 ${groups.length} 档有货`);
+        break;
       }
-      if (sawNewRegion) pass("解锁后能遇到城都地区的宝可梦");
-      else fail("城都宝可梦", "摇了 40 天一只都没出现");
     }
+    pass("每一级的开放范围内四档稀有度都有货");
+
+    // 等级一升，当天摇出来的遇怪就该能落在新范围里
+    await prisma.child.update({ where: { id: child.id }, data: { level: MAX_LEVEL } });
+    await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+    let sawBeyondKanto = false;
+    for (let i = 0; i < 15 && !sawBeyondKanto; i++) {
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+      await ensureTodayEncounters(child.id, `2099-01-${String((i % 28) + 1).padStart(2, "0")}`);
+      const encs = await prisma.dailyEncounter.findMany({ where: { childId: child.id } });
+      if (encs.some((e) => e.speciesId > REGIONS[0].ceiling)) sawBeyondKanto = true;
+    }
+    if (sawBeyondKanto) pass("满级后能遇到关都以外的宝可梦");
+    else fail("高等级遇怪", "摇了 15 天还只出关都的");
+
   } finally {
     // 清理本身失败也不能静默：兜底再扫一次，还失败就把话说清楚，别让人以为库是干净的
     try {

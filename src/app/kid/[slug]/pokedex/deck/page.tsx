@@ -110,7 +110,7 @@ export default async function DeckPage({ params }: { params: Promise<{ slug: str
         compact
         items={[
           { href: `/kid/${slug}/pokedex`, label: "回图鉴", emoji: "⬅️", tone: "sky" },
-          { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "📋", tone: "green" },
+          { href: `/kid/${slug}/pokedex/all`, label: "全部宝可梦", emoji: "📖", tone: "pink" },
         ]}
       />
     </main>

@@ -131,7 +131,9 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
             <Pinyin text="花园之路" /> 🌻
           </h2>
           <p className="kid-text text-sm text-white lg:text-base">
-            <Pinyin text={`花园长大看的是收获次数，和等级分开算。你已经收获过 ${rounds} 次`} />
+            <Pinyin
+              text={`花园会跟着等级长大，但要等你把当前这一园收获掉才会变。已经收获过 ${rounds} 次`}
+            />
           </p>
           {gardenPath.map((entry) => (
             <div
@@ -156,10 +158,10 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
                   <Pinyin text={`${entry.size} 个格子`} />
                 </span>
                 <span className="kid-text block text-sm text-slate-400 lg:text-base">
-                  {entry.needRounds === 0 ? (
+                  {entry.needLevel <= 1 ? (
                     <Pinyin text="一开始就有" />
                   ) : (
-                    <Pinyin text={`收获满 ${entry.needRounds} 次`} />
+                    <Pinyin text={`打卡到 ${entry.needLevel} 级`} />
                   )}
                 </span>
               </span>

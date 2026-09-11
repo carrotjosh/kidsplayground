@@ -16,7 +16,7 @@ import {
   HARVEST_DAILY_INTEREST,
   HARVEST_MAX_INTEREST_DAYS,
   HARVEST_MAX_MULTIPLIER,
-  HARVEST_ROUNDS_PER_STAGE,
+  GARDEN_STAGE_LEVELS,
 } from "@/lib/garden";
 
 import { PlantTypeForm } from "./PlantTypeForm";
@@ -82,9 +82,10 @@ export default async function PlantTypesAdminPage() {
         当天种下当天收获没有利息（只拿回本金）——这样「种满就收、反复刷阳光」没有任何好处，
         孩子只能靠真的把植物养住来赚这份利息。
         <br />
-        每收获 <b>{HARVEST_ROUNDS_PER_STAGE} 轮</b>花园升一级：格子多一圈，
-        并自动上架一种新植物（一共 {GARDEN_STAGES.length} 级，
-        {GARDEN_STAGES.map((n) => `${n}×${n}`).join(" → ")}）。
+        花园按<b>打卡等级</b>升级：格子多一圈，并自动上架一种新植物（一共{" "}
+        {GARDEN_STAGES.length} 级，
+        {GARDEN_STAGES.map((n, i) => `${n}×${n}(Lv.${GARDEN_STAGE_LEVELS[i]})`).join(" → ")}）。
+        等级够了也要等孩子把当前这一园收获掉才会长大——不然刚集齐的一整套会当场变成没集齐。
         <b>升级时会自动帮你上架新品种，这一页不用手动改</b>——
         上架种类数必须正好等于当前级数要求的 {maxTypes} 种，多了少了孩子都集不齐。
         所以上架的种类最好正好 {maxTypes} 种
@@ -123,7 +124,7 @@ export default async function PlantTypesAdminPage() {
             value={`${rounds} 轮`}
             sub={
               nextStage
-                ? `再 ${nextStage.needRounds - rounds} 轮升到 ${nextStage.side}×${nextStage.side}`
+                ? `Lv.${nextStage.needLevel} 升到 ${nextStage.side}×${nextStage.side}`
                 : "已经是最大花园"
             }
           />

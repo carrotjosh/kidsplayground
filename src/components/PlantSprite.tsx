@@ -22,6 +22,7 @@ const SPRITES: { match: RegExp; render: () => React.ReactNode }[] = [
   { match: /豌豆|射手/, render: Peashooter },
   { match: /樱桃|炸弹|辣椒/, render: CherryBomb },
   { match: /大嘴|食人|血盆/, render: Chomper },
+  { match: /玉米|投手|加农/, render: KernelPult },
 ];
 
 export function PlantSprite({
@@ -277,6 +278,56 @@ function Chomper() {
       />
       <Eye cx={24} cy={17} r={3.6} />
       <Eye cx={36} cy={14} r={3.2} />
+    </>
+  );
+}
+
+/**
+ * 玉米投手：一根斜架起来的玉米棒，像门小炮。
+ *
+ * 和前面几株的区别在姿态——它是唯一"斜着"的，一眼就能从一排植物里认出来。
+ * 玉米粒用几排小圆点表示，不画得太细，缩到花园格子那么小时才不会糊成一团。
+ */
+function KernelPult() {
+  return (
+    <>
+      <Stem x={22} top={40} />
+      {/* 底座：一小截托住玉米的斜坡 */}
+      <path
+        d="M10 52 L34 52 L28 44 L14 44 Z"
+        fill="#2f9e2f"
+        stroke={OUTLINE}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* 玉米棒，向右上方 30 度架着 */}
+      <g transform="rotate(-30 32 32)">
+        <rect
+          x="18"
+          y="22"
+          width="34"
+          height="18"
+          rx="9"
+          fill="#f2c53d"
+          stroke={OUTLINE}
+          strokeWidth="3"
+        />
+        {/* 玉米粒 */}
+        {[24, 31, 38, 45].map((cx) =>
+          [28, 34].map((cy) => (
+            <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.2" fill="#d19b1c" />
+          ))
+        )}
+        {/* 尾端的苞叶 */}
+        <path
+          d="M18 22 L8 18 L10 31 L8 44 L18 40 Z"
+          fill="#3fb63f"
+          stroke={OUTLINE}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+      </g>
+      <Eye cx={40} cy={20} r={3.4} />
     </>
   );
 }

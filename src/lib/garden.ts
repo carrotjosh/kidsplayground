@@ -19,16 +19,35 @@ import { ensureDailyTasksForDate } from "@/lib/tasks";
  *
  * **为什么要分级。** 原来永远是 4×4、永远那四种植物，第 2 轮和第 20 轮一模一样，
  * 孩子玩三轮就腻了——图鉴那边已经有 386 只 + 分地区解锁撑着六年，花园却零长期内容。
- * 每升一级多解锁一种植物、格子多一圈，成本按平方长（272 → 540 → 978），
+ * 每升一级多解锁一种植物、格子多一圈，成本按平方长（272 → 540 → 978 → 1666），
  * 难度和成就感自然递升。
  *
- * 想加第 4 级只要往这个数组里加一个 7，再在 bootstrap.ts 里补一种植物、
- * 给 PlantSprite 画一张图就行。
+ * 想再加一级只要往这个数组里加一个 8，在 GARDEN_STAGE_LEVELS 补一个等级门槛、
+ * 在 bootstrap.ts 补一种植物、给 PlantSprite 画一张图就行。
  */
-export const GARDEN_STAGES = [4, 5, 6] as const;
+export const GARDEN_STAGES = [4, 5, 6, 7] as const;
 
-/** 收获多少轮升一级。 */
-export const HARVEST_ROUNDS_PER_STAGE = 3;
+/**
+ * 每一级要求的打卡等级（下标 0 = 第 1 级花园）。
+ *
+ * 从"每收获 3 轮升一级"改成挂在等级上，理由同图鉴：原来那个触发条件奖励的是
+ * **在游戏里刷**（反复种满再收获），而不是打卡。内容是这套系统里最硬的激励，
+ * 该由"干了多少活"决定——等级正是那个量（见 lib/level.ts）。
+ * 顺带三条互不相干的进度线（等级 / 图鉴收集率 / 花园收获轮数）合并成了一条。
+ *
+ * Lv.4 ≈ 三周、Lv.8 ≈ 半年、Lv.12 ≈ 两年（按日薪 38 估），
+ * 和一园植物的成本曲线（272 → 540 → 978 → 1666）大致同步。
+ */
+export const GARDEN_STAGE_LEVELS = [1, 4, 8, 12] as const;
+
+/** 打卡到第 level 级**够格**用几级花园。真正生效还要等花园空出来，见 checkGardenStageUp。 */
+export function gardenStageForLevel(level: number): number {
+  let stage = 1;
+  GARDEN_STAGE_LEVELS.forEach((need, i) => {
+    if (level >= need) stage = i + 1;
+  });
+  return stage;
+}
 
 /** 第 stage 级花园的边长。越界的 stage 一律夹到合法范围，不抛错。 */
 export function gardenSide(stage: number): number {
@@ -380,12 +399,14 @@ export async function plantSeed(plantTypeId: string, childId: string) {
 }
 
 /**
- * 够条件就把花园升一级：多一圈格子、多解锁一种植物。
+ * 等级够了就把花园升一级：多一圈格子、多解锁一种植物。
+ * **必须在页面渲染之前调**，否则孩子这一次看到的还是旧尺寸，升级那个瞬间就没了。
  *
- * 和图鉴的 checkRegionUnlock 同构，包括调用时机——**必须在页面渲染之前调**，
- * 否则孩子这一次看到的还是旧尺寸的花园，升级那个瞬间就没了。
+ * **等级够了还要等花园空出来。** 等级随时可能升，而升级会把"需要几种、每种几棵"
+ * 从 4×4 变成 5×5——要是孩子刚好集齐一整套还没收获，园子会当场变回"没集齐"，
+ * 辛苦种满的一园白干。所以够格之后先记着，等他收获完（或被僵尸吃空）再长大。
  *
- * 一个刻意的保守判断：**没有可以解锁的新植物就不升级**。
+ * 另一个保守判断：**没有可以解锁的新植物就不升级**。
  * 升级会把"需要几种植物"从 4 变成 5，如果目录里凑不出第 5 种（家长把备用品种删了），
  * 升上去的花园就永远集不齐——那是个孩子自己解不开的死局，宁可停在当前这一级。
  */
@@ -394,13 +415,13 @@ export async function checkGardenStageUp(
 ): Promise<{ stage: number; side: number; unlockedPlant: string } | null> {
   const child = await prisma.child.findUnique({
     where: { id: childId },
-    select: { gardenStage: true },
+    select: { gardenStage: true, level: true },
   });
   if (!child) return null;
-  if (child.gardenStage >= GARDEN_STAGES.length) return null;
+  if (gardenStageForLevel(child.level) <= child.gardenStage) return null;
 
-  const rounds = await getHarvestedRounds(childId);
-  if (rounds < child.gardenStage * HARVEST_ROUNDS_PER_STAGE) return null;
+  const alive = await prisma.plant.count({ where: { childId, status: PlantStatus.ALIVE } });
+  if (alive > 0) return null;
 
   // 解锁最便宜的那个还没上架的品种。默认目录里新品种就是更贵的那些，
   // 所以按价格升序拿正好等于"按设计顺序解锁"。
@@ -426,16 +447,15 @@ export async function checkGardenStageUp(
 /**
  * 花园之路：每一级多大、要收获几轮才到、会解锁哪种植物。
  *
- * 和等级之路是**两条独立的线**：等级看累计打卡挣的阳光，花园看收获了几轮。
- * 不合并是因为叠两套门槛之后，"我到底什么时候能拿到寒冰射手"就说不清了。
- * 但孩子同样需要看见花园这条线的尽头，所以单独给一份。
+ * 现在和等级是同一条线（GARDEN_STAGE_LEVELS），单独列出来是因为孩子要看见
+ * "花园会长多大、什么时候多一种植物"这件具体的事，光看等级号码想象不出来。
  */
 export type GardenRoadmapEntry = {
   stage: number;
   side: number;
   size: number;
-  /** 到这一级需要累计收获几轮 */
-  needRounds: number;
+  /** 到这一级需要的打卡等级 */
+  needLevel: number;
   unlocks: { title: string; emoji: string | null }[];
   reached: boolean;
   current: boolean;
@@ -461,7 +481,7 @@ export async function getGardenRoadmap(
       stage: stageNo,
       side,
       size: side * side,
-      needRounds: i * HARVEST_ROUNDS_PER_STAGE,
+      needLevel: GARDEN_STAGE_LEVELS[i],
       unlocks: types.slice(from, to).map((t) => ({ title: t.title, emoji: t.emoji })),
       reached: stageNo <= stage,
       current: stageNo === stage,

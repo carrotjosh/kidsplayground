@@ -65,6 +65,8 @@ const DEFAULT_PLANT_TYPES = [
   { title: "寒冰射手", emoji: "❄️", cost: 40 },
   // ↓ 第 3 级（6×6）解锁
   { title: "大嘴花", emoji: "🌺", cost: 55 },
+  // ↓ 第 4 级（7×7）解锁
+  { title: "玉米投手", emoji: "🌽", cost: 75 },
 ];
 
 /** 一开始就上架几种 = 第 1 级花园需要的种类数。 */

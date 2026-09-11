@@ -12,9 +12,9 @@ import {
   masteryGoal,
   POKEDEX_MILESTONE_STEP,
   RARITY_LABELS,
-  REGION_UNLOCK_RATIO,
   REGIONS,
-  regionCeiling,
+  regionAt,
+  speciesCeilingForLevel,
 } from "@/lib/pokedex";
 import { pokemonArtPath } from "@/lib/pokemonArt";
 
@@ -29,8 +29,8 @@ export default async function BallsAdminPage() {
   // 主题上线前建的孩子档案没有精灵球目录，进这一页时补上
   await ensureBallTypes(child.id);
 
-  const ceiling = regionCeiling(child.pokedexRegion);
-  const regionName = REGIONS[Math.min(child.pokedexRegion, REGIONS.length) - 1].name;
+  const ceiling = speciesCeilingForLevel(child.level);
+  const regionName = regionAt(ceiling);
   const milestoneBonus = pokedexMilestoneBonus(await dailyEarnRate(child.id));
 
   const [balls, counts, speciesCount, caught, earned, todaysEncounters] = await Promise.all([
@@ -68,10 +68,7 @@ export default async function BallsAdminPage() {
   const toNextMilestone =
     // 同孩子端：整除时 || 会把结果变成 0，"再收集 0 种"是错的
     POKEDEX_MILESTONE_STEP - (distinct % POKEDEX_MILESTONE_STEP);
-  const toNextRegion =
-    child.pokedexRegion >= REGIONS.length
-      ? null
-      : Math.max(0, Math.ceil(ceiling * REGION_UNLOCK_RATIO) - distinct);
+  const nextCeiling = speciesCeilingForLevel(child.level + 1);
   const progress = levelProgress(child.level, earned);
   const byBall = new Map(counts.map((c) => [c.ballTypeId, c._count._all]));
 
@@ -117,11 +114,11 @@ export default async function BallsAdminPage() {
           <p>
             再收集 <b>{toNextMilestone}</b> 种拿到下一个里程碑奖励（{milestoneBonus} 阳光）。
           </p>
-          {toNextRegion !== null && (
+          {nextCeiling > ceiling && (
             <p>
-              再收集 <b>{toNextRegion}</b> 种解锁
-              <b>{REGIONS[child.pokedexRegion].name}地区</b>（会多出{" "}
-              {REGIONS[child.pokedexRegion].ceiling - ceiling} 种新宝可梦）。
+              图鉴现在开放到 No.{ceiling}（{regionName}地区）。升到 <b>Lv.{child.level + 1}</b>{" "}
+              再开放 <b>{nextCeiling - ceiling}</b> 只，全部 {REGIONS[REGIONS.length - 1].ceiling}{" "}
+              只要打卡到 Lv.15。
             </p>
           )}
           <p>

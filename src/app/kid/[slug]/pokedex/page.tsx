@@ -13,15 +13,14 @@ import { getPointsBalance } from "@/lib/points";
 import { dailyEarnRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
 import {
   catchProbability,
-  checkRegionUnlock,
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
   POKEDEX_MILESTONE_STEP,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
-  REGION_UNLOCK_RATIO,
   REGIONS,
-  regionCeiling,
+  regionAt,
+  speciesCeilingForLevel,
   settlePokedexForChild,
 } from "@/lib/pokedex";
 
@@ -41,11 +40,10 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 懒结算：把欠下的"离家出走"判定补齐，返回这次新发生的事件做一次性提示
   const events = await settlePokedexForChild(child.id);
 
-  // 够条件就开新地区。**必须排在 ensureTodayEncounters 前面**——
-  // 放后面的话今天的名单已经按旧上限摇好了，新地区要等到明天才可能出现，
-  // "开放新地区"那个瞬间的惊喜就没了。
-  const unlocked = await checkRegionUnlock(child.id);
+  // 升级检查必须排在 ensureTodayEncounters 前面：图鉴开放到第几号是按等级算的，
+  // 放后面的话今天的名单已经按旧上限摇好了，新解锁的那批要等明天才可能出现。
   const levelUp = await checkLevelUp(child.id);
+  const level = levelUp?.level ?? child.level;
 
   // 今天遇到谁：一天只生成一次，刷新页面不会重摇（否则一直刷就能刷出传说）
   const today = todayDateString();
@@ -54,11 +52,10 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 各种奖励金额都跟着日薪走（见 lib/economy.ts），家长改了任务模板会自动跟上
   const rate = await dailyEarnRate(child.id);
   const milestoneBonus = pokedexMilestoneBonus(rate);
-  // 收集进度的分母只算**已解锁地区**的宝可梦。用全库 386 当分母的话，
+  // 收集进度的分母只算**等级已经放出来的**那些。用全库 386 当分母的话，
   // 刚开始玩的孩子看到的是 3/386 的进度条，等于一上来就告诉他"你永远集不完"。
-  // 刚解锁的话 child 里还是旧值，用 checkRegionUnlock 返回的新上限
-  const ceiling = unlocked ? unlocked.ceiling : regionCeiling(child.pokedexRegion);
-  const regionName = REGIONS[Math.min(child.pokedexRegion, REGIONS.length) - 1].name;
+  const ceiling = speciesCeilingForLevel(level);
+  const regionName = regionAt(ceiling);
 
   const [caught, balls, balance, totalSpecies, encounters] = await Promise.all([
     prisma.caught.findMany({
@@ -102,13 +99,6 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
 
       {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
-      {/* 新地区开放。这是分批解锁最主要的动机来源，位置放在最上面 */}
-      {unlocked && (
-        <p className="pixel-card kid-text bg-nes-yellow p-4 text-center text-slate-900 lg:p-5">
-          <Pinyin text={`🎉 ${unlocked.name}地区开放了！会遇到全新的宝可梦`} />
-        </p>
-      )}
-
       {/* 任务没完成，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
       {events.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -143,12 +133,12 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             style={{ width: `${Math.min(100, (distinctCount / totalSpecies) * 100)}%` }}
           />
         </div>
-        {/* 后面还有多少没开放。不说的话孩子会以为图鉴就 151 只，
-            而分批解锁的全部意义就在于"后面还有" */}
-        {child.pokedexRegion < REGIONS.length && (
+        {/* 后面还有多少没开放。不说的话孩子会以为图鉴就这些，
+            而按等级分批放出来的全部意义就在于"后面还有" */}
+        {ceiling < REGIONS[REGIONS.length - 1].ceiling && (
           <p className="kid-text text-sm text-slate-500 lg:text-base">
             <Pinyin
-              text={`收集到 ${Math.ceil(totalSpecies * REGION_UNLOCK_RATIO)} 种就开放${REGIONS[child.pokedexRegion].name}地区，后面还有 ${REGIONS[REGIONS.length - 1].ceiling - totalSpecies} 只没见过面`}
+              text={`升到 ${level + 1} 级再开放 ${speciesCeilingForLevel(level + 1) - ceiling} 只，后面一共还有 ${REGIONS[REGIONS.length - 1].ceiling - ceiling} 只没见过面`}
             />{" "}
             🌏
           </p>
@@ -280,7 +270,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
           { href: `/kid/${slug}/pokedex/deck`, label: "我的牌库", emoji: "🗂️", tone: "green" },
-          { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },
+          { href: `/kid/${slug}/pokedex/all`, label: "全部宝可梦", emoji: "📖", tone: "pink" },
         ]}
       />
     </main>

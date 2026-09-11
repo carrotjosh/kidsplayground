@@ -147,68 +147,45 @@ export function masteryGoal(rarity: number): number {
  */
 export const MAX_REFRESHES_PER_DAY = 3;
 
-/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus（4 天工资）。 */
-export const POKEDEX_MILESTONE_STEP = 8;
-
 /**
- * 图鉴分地区解锁。
+ * 图鉴按**打卡等级**开放到第几号。
  *
- * 不一次把 386 只全放进遇怪池：模拟过 36 个月，全开的话重度玩家 **21 个月就集齐 151 只**，
- * 之后扔一个 8 阳光的球期望只回 3 阳光，没有任何理由再抓——图鉴这条线在第三年就死了。
- * 按地区分批之后（解锁线 80%），重度玩家第 13 月开城都、第 24 月开丰缘，六年仍未集齐；
- * 而且"新地区开放了"本身就是个强动机，比闷头多给 235 只有用得多。
+ * 从"收集到当前地区的 80% 就开下一个"改成挂在等级上，原因是那个触发条件
+ * 奖励的是**在游戏里刷**（多买球多抓），而不是**打卡**。内容是这套系统里最硬的
+ * 激励，它应该由"干了多少活"决定——等级正是那个量（见 lib/level.ts）。
+ * 顺带三条独立的进度线（等级 / 图鉴收集率 / 花园收获轮数）合并成了一条。
  *
- * ceiling 是全国图鉴编号的上界，正好和世代边界重合。
+ * **下限必须 ≥151**：第一只传说宝可梦是 #144（急冻鸟），上限低于它的话
+ * 传说那一档一只都没有，摇到传说时会退回随机挑一只普通的——稀有度体系静默失效。
+ * 所以第 1 级直接给满关都，往后每级放出约 17 只。
+ *
+ * 三个地区边界落在 Lv.1 / Lv.7 / Lv.15，中间每一级也都有新面孔，
+ * 这样"等级之路"上每一行都有内容，而不是只有三行有。
  */
+export const SPECIES_CEILING_BY_LEVEL = [
+  151, 170, 188, 205, 222, 238, 251, 268, 285, 302, 318, 334, 350, 368, 386,
+] as const;
+
+/** 地区名和它的编号上界，用来在界面上标"这一批属于哪个地区"。 */
 export const REGIONS = [
   { name: "关都", ceiling: 151 },
   { name: "城都", ceiling: 251 },
   { name: "丰缘", ceiling: 386 },
 ] as const;
 
-/** 当前地区收集到这个比例就解锁下一个。 */
-export const REGION_UNLOCK_RATIO = 0.8;
-
-/** 某个孩子当前能遇到的最大图鉴编号。region 存在 Child.pokedexRegion。 */
-export function regionCeiling(region: number): number {
-  return REGIONS[Math.min(Math.max(region, 1), REGIONS.length) - 1].ceiling;
+/** 第 level 级能遇到的最大图鉴编号。越界一律夹到合法范围。 */
+export function speciesCeilingForLevel(level: number): number {
+  const i = Math.min(Math.max(level, 1), SPECIES_CEILING_BY_LEVEL.length) - 1;
+  return SPECIES_CEILING_BY_LEVEL[i];
 }
 
-/**
- * 检查够不够解锁下一个地区，够就解锁并返回事件。幂等：解锁过就不会再解锁。
- *
- * **必须在 ensureTodayEncounters 之前调用**，否则新地区的宝可梦要等到第二天才可能出现，
- * "开放新地区"的那个瞬间就没了。
- */
-export async function checkRegionUnlock(
-  childId: string
-): Promise<{ name: string; ceiling: number } | null> {
-  const child = await prisma.child.findUnique({
-    where: { id: childId },
-    select: { pokedexRegion: true },
-  });
-  if (!child) return null;
-  if (child.pokedexRegion >= REGIONS.length) return null;
-
-  const ceiling = regionCeiling(child.pokedexRegion);
-  const collected = await prisma.caught.findMany({
-    where: { childId, status: CaughtStatus.OWNED, speciesId: { lte: ceiling } },
-    select: { speciesId: true },
-    distinct: ["speciesId"],
-  });
-  if (collected.length < Math.ceil(ceiling * REGION_UNLOCK_RATIO)) return null;
-
-  // 带上 pokedexRegion 的当前值做条件：两个请求同时触发解锁时只有一个能改到，
-  // 不会一次跳两个地区。
-  const updated = await prisma.child.updateMany({
-    where: { id: childId, pokedexRegion: child.pokedexRegion },
-    data: { pokedexRegion: child.pokedexRegion + 1 },
-  });
-  if (updated.count === 0) return null;
-
-  const next = REGIONS[child.pokedexRegion];
-  return { name: next.name, ceiling: next.ceiling };
+/** 这个编号上界落在哪个地区里（用来显示"关都地区已经收集…"）。 */
+export function regionAt(ceiling: number): string {
+  return (REGIONS.find((r) => ceiling <= r.ceiling) ?? REGIONS[REGIONS.length - 1]).name;
 }
+
+/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus（4 天工资）。 */
+export const POKEDEX_MILESTONE_STEP = 8;
 
 /**
  * 扔球的结果。文案在这里就用 annotate() **在服务端**标好拼音再返回。
@@ -306,13 +283,13 @@ async function createEncounters(
   if (count <= 0) return;
   const date = dateStringToUtcDate(dateString);
 
-  // 只从已解锁的地区里挑（见 REGIONS）。上限一路传进 findMany 的 where，
-  // 而不是查完再 filter——不然新地区还没开时会白查几百行。
+  // 只从等级已经放出来的那一段里挑（见 SPECIES_CEILING_BY_LEVEL）。
+  // 上限一路传进 findMany 的 where，而不是查完再 filter——不然会白查几百行。
   const child = await prisma.child.findUnique({
     where: { id: childId },
-    select: { pokedexRegion: true },
+    select: { level: true },
   });
-  const ceiling = regionCeiling(child?.pokedexRegion ?? 1);
+  const ceiling = speciesCeilingForLevel(child?.level ?? 1);
 
   const ownedSpeciesIds = new Set(
     (
