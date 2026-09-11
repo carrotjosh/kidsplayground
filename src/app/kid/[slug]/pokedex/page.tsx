@@ -107,7 +107,9 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   ).length;
 
   const toNextMilestone =
-    POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP || POKEDEX_MILESTONE_STEP);
+    // 不能写成 (n % STEP || STEP)：n 是 STEP 的整数倍时那个 || 会让结果变成 0，
+    // 界面上就成了"再收集 0 种"。取模本身在整除时就返回 0，STEP - 0 = STEP 才是对的。
+    POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP);
 
   return (
     <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-6 lg:p-8 2xl:max-w-6xl">

@@ -7,6 +7,10 @@ import type { KidNavItem } from "@/components/KidNavBar";
 /**
  * 主题相关的展示配置集中在这里，免得"图鉴还是花园"这个判断散落在各个页面里。
  * 加第三个主题时，改这一个文件 + 加一条路由就够了。
+ *
+ * adminLabel 是家长端导航里那一栏的名字。刻意叫「花园」「宝可梦」而不是
+ * 「植物目录」「精灵球」——那一页现在既是孩子的游戏进展、也是目录，
+ * 家长想看"孩子玩到哪了"第一反应会点玩法的名字，不会点"目录"。
  */
 export const THEME_META: Record<
   KidTheme,
@@ -16,14 +20,14 @@ export const THEME_META: Record<
     label: "我的花园",
     emoji: "🌻",
     path: "garden",
-    adminLabel: "植物目录",
+    adminLabel: "花园",
     adminPath: "/admin/plants",
   },
   POKEDEX: {
     label: "我的图鉴",
     emoji: "📕",
     path: "pokedex",
-    adminLabel: "精灵球",
+    adminLabel: "宝可梦",
     adminPath: "/admin/balls",
   },
 };
