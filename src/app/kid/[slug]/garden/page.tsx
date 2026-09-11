@@ -14,6 +14,7 @@ import {
   GARDEN_COLS,
   GARDEN_SET_SIZE,
   GARDEN_SIZE,
+  HARVEST_MAX_INTEREST_DAYS,
   getHarvestedRounds,
   settleGardenForChild,
 } from "@/lib/garden";
@@ -66,9 +67,11 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         <section className="flex flex-col gap-2">
           {events.map((event, i) => (
             <p key={i} className="pixel-card kid-text bg-nes-red p-4 text-center text-white lg:p-5">
-              {event.outcome === "PLANT_EATEN"
-                ? `🧟 ${event.date}：任务没有全部完成，僵尸吃掉了你的 ${event.plantEmoji ?? ""} ${event.plantTitle}！`
-                : `🧟 ${event.date}：任务没有全部完成，僵尸来过，还好花园是空的，扑了个空～`}
+              {event.outcome === "GARDEN_EMPTY"
+                ? `🧟 ${event.date}：任务没有全部完成，僵尸来过，还好花园是空的，扑了个空～`
+                : event.shielded
+                  ? `🧟 ${event.date}：任务没有全部完成，还好你刚种下的 ${event.plantEmoji ?? ""} ${event.plantTitle} 挡在最前面，替其它植物挨了一口！`
+                  : `🧟 ${event.date}：任务没有全部完成，僵尸吃掉了你的 ${event.plantEmoji ?? ""} ${event.plantTitle}！`}
             </p>
           ))}
         </section>
@@ -124,10 +127,23 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
           </p>
         )}
 
+        {/* 养得越久收获越多，孩子要看得见这件事，否则"种满就收"仍然是他的第一反应 */}
+        {progress.spent > 0 && (
+          <p className="kid-text text-sm text-slate-500 lg:text-base">
+            <Pinyin
+              text={
+                progress.interestDays >= HARVEST_MAX_INTEREST_DAYS
+                  ? `本金 ${progress.spent}，利息已经攒满啦，随时可以收`
+                  : `本金 ${progress.spent}，平均养了 ${progress.interestDays} 天。养到 ${HARVEST_MAX_INTEREST_DAYS} 天利息最多，再等等更值哦`
+              }
+            />
+          </p>
+        )}
+
         {progress.complete && (
           <ConfirmActionButton
             action={harvestGardenAction.bind(null, slug)}
-            confirmText={`花园集齐啦！收获后所有植物会被收走，换成 ${progress.bonus} 阳光（种它们一共花了 ${progress.spent}），然后重新开始种。确定收获吗？`}
+            confirmText={`花园集齐啦！收获后所有植物会被收走，换成 ${progress.bonus} 阳光（本金 ${progress.spent} + 养了 ${progress.interestDays} 天的利息），然后重新开始种。确定收获吗？`}
             label={`🎉 收获花园，换 ${progress.bonus} 阳光`}
             tone="gold"
           />

@@ -17,7 +17,7 @@ import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { CaughtStatus, Gender, ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
 import { purgeTestTenants } from "../src/lib/testTenant";
-import { todayAsUtcDate } from "../src/lib/date";
+import { addDays, dateStringToUtcDate, todayAsUtcDate, todayDateString } from "../src/lib/date";
 import {
   dailyEarnRate,
   dailyEarnRateFromTemplates,
@@ -28,6 +28,12 @@ import {
   speciesMasteryBonus,
 } from "../src/lib/economy";
 import { auditEconomy, recalibrationPreview } from "../src/lib/economyAudit";
+import {
+  computeHarvestBonus,
+  HARVEST_MAX_INTEREST_DAYS,
+  HARVEST_MAX_MULTIPLIER,
+  settleGardenForChild,
+} from "../src/lib/garden";
 import {
   checkRegionUnlock,
   ensureTodayEncounters,
@@ -140,6 +146,33 @@ async function main() {
   // 一个任务都没有时 D=0，刷新费不能变成 0——那样孩子可以无限白嫖刷新
   if (refreshCosts(0).every((c) => c >= 1)) pass("日薪 0 时刷新费仍 ≥1，不会白嫖");
   else fail("日薪 0 时的刷新费", `是 ${refreshCosts(0)}`);
+
+  // ---------- 花园：收获利息 ----------
+  // 这一组守的是一个真实存在过的严重漏洞：收获原来是"成本 × 1.5"、且收获会清空全部格子，
+  // 而种植和收获都没有天数限制——余额够种满一园之后，"种满→收获→再种满→再收获"
+  // 可以在同一次操作里无限循环，每圈净赚 50%，整个阳光经济直接作废。
+  console.log("\n【花园】收获按天计息，当天种当天收没有利息");
+  const today = todayDateString();
+  const plantsAt = (costs: number[], daysAgo: number) =>
+    costs.map((cost) => ({
+      ledgerEntry: { amount: -cost },
+      plantedOnDate: dateStringToUtcDate(addDays(today, -daysAgo)),
+    }));
+  const fullSet = [8, 8, 8, 8, 12, 12, 12, 12, 18, 18, 18, 18, 30, 30, 30, 30];
+
+  const instant = computeHarvestBonus(plantsAt(fullSet, 0), today);
+  expect("种满一园的本金", instant.spent, 272);
+  expect("当天种当天收的收获（必须等于本金，否则能刷循环）", instant.bonus, 272);
+
+  const ripe = computeHarvestBonus(plantsAt(fullSet, HARVEST_MAX_INTEREST_DAYS), today);
+  expect(`养满 ${HARVEST_MAX_INTEREST_DAYS} 天的收获`, ripe.bonus, Math.ceil(272 * HARVEST_MAX_MULTIPLIER));
+
+  const overripe = computeHarvestBonus(plantsAt(fullSet, 90), today);
+  expect("养 90 天也不会超过上限（利息封顶）", overripe.bonus, ripe.bonus);
+
+  // 逐棵取整的话 16 棵能白捡十几点，所以只在总额上取整一次
+  const halfway = computeHarvestBonus(plantsAt(fullSet, 3), today);
+  expect("养 3 天", halfway.bonus, Math.ceil(272 * 1.15));
 
   const { user, child } = await createTenant();
   try {
@@ -280,6 +313,50 @@ async function main() {
     else fail("校准幂等", "第二次仍然想改价");
     if (!after.findings.some((f) => f.title.includes("日薪从"))) pass("调到位后不再提示漂移");
     else fail("校准后", "还在提示漂移");
+
+    // ---------- 花园：僵尸不再能被白嫖免疫 ----------
+    // 原来"当天种过植物"= 完全免疫。但收获会清空 16 个格子、永远有空位，
+    // 所以一天种一棵 8 阳光的向日葵就能永久免疫，而那 8 阳光收获时还连本带利还回来，
+    // 免疫等于负成本白送——"任务没做完会有后果"这条规则实际上根本不存在。
+    console.log("\n【花园】任务没做完必定被吃一棵，当天新种的挡在最前面");
+    await prisma.child.update({
+      where: { id: child.id },
+      data: { theme: "GARDEN", gardenSettledThrough: dateStringToUtcDate(addDays(today, -2)) },
+    });
+    const mkPlant = (slot: number, title: string, daysAgo: number) =>
+      prisma.plant.create({
+        data: {
+          childId: child.id,
+          title,
+          slot,
+          status: "ALIVE",
+          plantedOnDate: dateStringToUtcDate(addDays(today, -daysAgo)),
+        },
+      });
+    const oldPlant = await mkPlant(0, "老向日葵", 5);
+    // 判定的是"昨天"，所以"当天新种"对应 plantedOnDate = 昨天
+    const freshPlant = await mkPlant(1, "昨天种的向日葵", 1);
+
+    // 昨天的任务会被 ensureDailyTasksForDate 按模板补出来，全是 PENDING → 判定为没通过
+    const gardenEvents = await settleGardenForChild(child.id);
+    const eaten = gardenEvents.filter((e) => e.outcome === "PLANT_EATEN");
+    if (eaten.length === 1) pass("当天种了植物也照样被吃了一棵（不再凭空免疫）");
+    else fail("僵尸判定", `产生了 ${eaten.length} 条被吃事件，期望 1 条`);
+    if (eaten[0] && "shielded" in eaten[0] && eaten[0].shielded) pass("事件标记为「新种的挡了一下」");
+    else fail("shielded 标记", "没有标上");
+
+    const [oldAfter, freshAfter] = await Promise.all([
+      prisma.plant.findUniqueOrThrow({ where: { id: oldPlant.id } }),
+      prisma.plant.findUniqueOrThrow({ where: { id: freshPlant.id } }),
+    ]);
+    expect("当天新种的那棵被吃", freshAfter.status, "EATEN");
+    expect("养了 5 天的那棵还活着", oldAfter.status, "ALIVE");
+
+    await prisma.plant.deleteMany({ where: { childId: child.id } });
+    await prisma.child.update({
+      where: { id: child.id },
+      data: { theme: "POKEDEX", gardenSettledThrough: null },
+    });
 
     // ---------- 6. 图鉴分地区解锁 ----------
     console.log("\n【图鉴】按收集进度分地区解锁");

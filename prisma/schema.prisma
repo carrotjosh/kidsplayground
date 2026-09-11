@@ -324,8 +324,9 @@ model Plant {
   slot        Int
   status      PlantStatus @default(ALIVE)
   plantedAt   DateTime    @default(now())
-  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，是因为
-  // 夜间结算要按天判断"这天有没有种过植物"（种了就免疫僵尸），直接比日期列最省事也最不容易错。
+  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，有两个用处：
+  // 夜间结算要按天判断哪些植物是"当天刚种下"的（它们挡在最前面、先被僵尸吃），
+  // 收获时又要按它算每棵养了多少天来计息。直接比日期列最省事也最不容易错。
   plantedOnDate DateTime? @db.Date
   eatenAt     DateTime?
   eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示

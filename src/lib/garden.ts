@@ -19,17 +19,40 @@ export const GARDEN_SIZE = GARDEN_COLS * GARDEN_ROWS; // 16
 export const GARDEN_SET_SIZE = 4;
 
 /**
- * 集齐一整套后的收获倍率：把这一园植物**实际花掉的阳光**乘上这个数还给孩子。
+ * 收获奖励 = 每棵植物的成本 × (1 + 每天利息 × 它活了多少天)，利息最多算 MAX 天。
  *
- * 为什么不是一个固定数字（原来写死 50）：植物价格是家长在后台随时能改的，
- * 固定奖励一旦低于种满一园的总成本，孩子就是"花 76 换回 50"，理性的做法是永远不收获、
- * 甚至永远不种——整个花园玩法就废了。按倍率算的话，奖励天然跟着成本走，改价也不会翻车。
+ * **为什么不是一个固定倍率。** 原来是"成本 × 1.5"，一次性给。那样有个致命漏洞：
+ * 收获会清空全部格子，而种植和收获都没有天数限制，所以余额一旦够种满一园，
+ * 就能在同一次操作里「种满 16 棵 → 收获 → 再种满 → 再收获」无限循环，
+ * 每圈净赚 50%。孩子只要发现一次，整个阳光经济就废了。
  *
- * 1.5 的含义：种满一整套能连本带利拿回 150%。这不是白送——那些阳光在花园里是锁死的
- * （不能拿去换礼物），而且任务没完成时僵尸会吃掉植物、那部分投入就亏了。
- * 所以本质是"坚持打卡就能拿到的利息"，正好是想要的激励方向。
+ * 改成按天计息之后，"当天种当天收"的利息是 0，收获恰好等于成本，刷循环收益归零；
+ * 而正常玩法（边攒边种，十天左右集齐一园）自然拿到接近 1.5 倍——
+ * 和改之前的手感一样，只是现在这 50% 是**真的用时间换来的**。
+ *
+ * 这也让注释里一直宣称的那句话第一次成立：这是"把阳光锁在花园里的利息"。
+ * 锁得越久利息越多，中途任务没做完被僵尸吃掉，那棵的本金和利息一起没。
  */
-export const GARDEN_HARVEST_MULTIPLIER = 1.5;
+export const HARVEST_DAILY_INTEREST = 0.05;
+export const HARVEST_MAX_INTEREST_DAYS = 10;
+
+/** 一棵植物最多能拿到的倍率，给界面文案用。 */
+export const HARVEST_MAX_MULTIPLIER = 1 + HARVEST_DAILY_INTEREST * HARVEST_MAX_INTEREST_DAYS;
+
+type HarvestablePlant = {
+  ledgerEntry?: { amount: number } | null;
+  plantType?: { cost: number } | null;
+  plantedOnDate?: Date | null;
+};
+
+/** 这棵植物到 onDate 为止活了几天（封顶到计息上限）。 */
+function interestDays(plantedOnDate: Date | null | undefined, onDate: string): number {
+  if (!plantedOnDate) return 0;
+  const planted = Date.parse(`${formatStoredDate(plantedOnDate)}T00:00:00Z`);
+  const now = Date.parse(`${onDate}T00:00:00Z`);
+  const days = Math.floor((now - planted) / 86_400_000);
+  return Math.min(Math.max(days, 0), HARVEST_MAX_INTEREST_DAYS);
+}
 
 /**
  * 算一园植物值多少收获奖励。
@@ -37,19 +60,40 @@ export const GARDEN_HARVEST_MULTIPLIER = 1.5;
  * 成本取的是当初那条 PLANT_SEED 流水（种下时真的扣了多少），不是植物目录上的现价——
  * 家长中途改价、甚至把品种删了，都不该影响已经种下去的这些植物值多少钱。
  * 万一流水缺失（比如脚本直接造的测试数据），退回用目录现价兜底。
+ *
+ * 只在总额上取整一次。逐棵取整的话 16 棵能白捡十几点阳光。
  */
 export function computeHarvestBonus(
-  plants: { ledgerEntry: { amount: number } | null; plantType: { cost: number } | null }[]
-): { spent: number; bonus: number } {
-  const spent = plants.reduce(
-    (sum, p) => sum + Math.abs(p.ledgerEntry?.amount ?? p.plantType?.cost ?? 0),
-    0
-  );
-  return { spent, bonus: Math.ceil(spent * GARDEN_HARVEST_MULTIPLIER) };
+  plants: HarvestablePlant[],
+  onDate: string = todayDateString()
+): { spent: number; bonus: number; interestDays: number } {
+  let spent = 0;
+  let gross = 0;
+  let daySum = 0;
+  for (const plant of plants) {
+    const cost = Math.abs(plant.ledgerEntry?.amount ?? plant.plantType?.cost ?? 0);
+    const days = interestDays(plant.plantedOnDate, onDate);
+    spent += cost;
+    daySum += days;
+    gross += cost * (1 + HARVEST_DAILY_INTEREST * days);
+  }
+  return {
+    spent,
+    bonus: Math.ceil(gross),
+    // 平均计息天数，用来在页面上解释"再等几天更值"
+    interestDays: plants.length > 0 ? Math.round(daySum / plants.length) : 0,
+  };
 }
 
 export type GardenEvent =
-  | { date: string; outcome: "PLANT_EATEN"; plantTitle: string; plantEmoji: string | null }
+  | {
+      date: string;
+      outcome: "PLANT_EATEN";
+      plantTitle: string;
+      plantEmoji: string | null;
+      /** 被吃的是不是"当天刚种下、挡在最前面"的那棵 */
+      shielded: boolean;
+    }
   | { date: string; outcome: "GARDEN_EMPTY" };
 
 export type GardenProgressEntry = {
@@ -72,6 +116,8 @@ export type GardenProgress = {
   spent: number;
   /** 现在收获能拿多少（集齐前也算出来给孩子看，知道攒下去值多少） */
   bonus: number;
+  /** 这一园植物的平均计息天数，用来告诉孩子"再等等更值" */
+  interestDays: number;
 };
 
 /**
@@ -90,6 +136,7 @@ export function computeGardenProgress(
     plantTypeId: string | null;
     ledgerEntry?: { amount: number } | null;
     plantType?: { cost: number } | null;
+    plantedOnDate?: Date | null;
   }[]
 ): GardenProgress {
   const activeIds = new Set(activeTypes.map((t) => t.id));
@@ -111,12 +158,7 @@ export function computeGardenProgress(
     needed: GARDEN_SET_SIZE,
   }));
 
-  const { spent, bonus } = computeHarvestBonus(
-    alivePlants.map((p) => ({
-      ledgerEntry: p.ledgerEntry ?? null,
-      plantType: p.plantType ?? null,
-    }))
-  );
+  const { spent, bonus, interestDays } = computeHarvestBonus(alivePlants);
 
   return {
     entries,
@@ -126,6 +168,7 @@ export function computeGardenProgress(
       entries.length > 0 && entries.length * GARDEN_SET_SIZE + strayAlive <= GARDEN_SIZE,
     spent,
     bonus,
+    interestDays,
   };
 }
 
@@ -134,6 +177,7 @@ export function computeGardenProgress(
  * 因为今天还没过完）。某一天"算不算安全"：
  *   - 先回填那天缺失的周期任务（防止"不开 App 就躲过判定"）；
  *   - 该天有任务（排除 CANCELLED）且全部 DONE 才算安全；
+ *   - 当天种没种植物**不影响**判定，只影响僵尸先吃哪一棵（见下面的注释）；
  *   - 该天完全没有任务（真实意义上的休息日）也算安全，不惩罚；
  *   - 有任务处于 PENDING 或 PENDING_REVIEW（提交了但家长还没批）就算"没通过"。
  * 整个函数在一个事务里执行，对 Child 行加 FOR UPDATE 锁防止并发重复结算。
@@ -171,17 +215,11 @@ export async function settleGardenForChild(childId: string): Promise<GardenEvent
         },
       });
 
-      // 当天种过植物就免疫僵尸——新种下的那棵挡住了这一晚。
-      // 注意花园只有 GARDEN_SIZE 个格子、种满就不能再种，所以这张"免死金牌"天然有上限，
-      // 孩子没法靠每天买一棵便宜植物无限逃避任务。
-      const plantedToday = await tx.plant.count({
-        where: { childId, plantedOnDate: dateStringToUtcDate(cursor) },
-      });
-
-      const isSafe =
-        plantedToday > 0 ||
-        dayTasks.length === 0 ||
-        dayTasks.every((t) => t.status === TaskStatus.DONE);
+      // 只看任务。**当天种了植物不再等于免疫**——原来是免疫的，但收获会把 16 个格子
+      // 全部清空、永远有空位，所以"一天种一棵最便宜的向日葵"就能永久免疫，
+      // 而那 8 阳光收获时还连本带利还回来，等于免疫是负成本白送，
+      // "任务没做完会有后果"这条规则实际上根本不存在。
+      const isSafe = dayTasks.length === 0 || dayTasks.every((t) => t.status === TaskStatus.DONE);
 
       if (!isSafe) {
         const alivePlants = await tx.plant.findMany({
@@ -191,7 +229,15 @@ export async function settleGardenForChild(childId: string): Promise<GardenEvent
         if (alivePlants.length === 0) {
           events.push({ date: cursor, outcome: "GARDEN_EMPTY" });
         } else {
-          const chosen = alivePlants[Math.floor(Math.random() * alivePlants.length)];
+          // 当天刚种下的那棵挡在最前面，先被吃。
+          // 保留了"新种的植物能挡一下"这层植物大战僵尸的味道，但代价是真的——
+          // 挡下来的是那棵新植物本身，不再是凭空免疫。
+          const cursorDate = dateStringToUtcDate(cursor).getTime();
+          const freshlyPlanted = alivePlants.filter(
+            (p) => p.plantedOnDate?.getTime() === cursorDate
+          );
+          const pool = freshlyPlanted.length > 0 ? freshlyPlanted : alivePlants;
+          const chosen = pool[Math.floor(Math.random() * pool.length)];
           await tx.plant.update({
             where: { id: chosen.id },
             data: {
@@ -205,6 +251,7 @@ export async function settleGardenForChild(childId: string): Promise<GardenEvent
             outcome: "PLANT_EATEN",
             plantTitle: chosen.title,
             plantEmoji: chosen.emoji,
+            shielded: freshlyPlanted.length > 0,
           });
         }
       }
@@ -327,9 +374,10 @@ export async function harvestGarden(childId: string) {
         select: {
           id: true,
           plantTypeId: true,
-          // 算收获奖励要知道这些植物当初花了多少，见 computeHarvestBonus
+          // 算收获奖励要知道这些植物当初花了多少、活了多久，见 computeHarvestBonus
           ledgerEntry: { select: { amount: true } },
           plantType: { select: { cost: true } },
+          plantedOnDate: true,
         },
       }),
       tx.pointsLedger.count({ where: { childId, type: LedgerType.GARDEN_BONUS } }),
@@ -342,7 +390,7 @@ export async function harvestGarden(childId: string) {
 
     const round = previousRounds + 1;
     // 奖励在事务内按实际存活的这批植物重算，不采信页面传来的数字
-    const { spent, bonus } = computeHarvestBonus(alivePlants);
+    const { spent, bonus, interestDays } = computeHarvestBonus(alivePlants);
 
     await tx.plant.updateMany({
       where: { childId, status: PlantStatus.ALIVE },
@@ -353,11 +401,11 @@ export async function harvestGarden(childId: string) {
       data: {
         childId,
         amount: bonus,
-        reason: `花园集齐一整套，收获奖励（第 ${round} 轮，成本 ${spent} 阳光）`,
+        reason: `花园集齐一整套，收获奖励（第 ${round} 轮，成本 ${spent} 阳光，平均养了 ${interestDays} 天）`,
         type: LedgerType.GARDEN_BONUS,
       },
     });
 
-    return { round, spent, bonus };
+    return { round, spent, bonus, interestDays };
   });
 }

@@ -1,7 +1,13 @@
 import { PlantStatus } from "@/generated/prisma/client";
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
-import { GARDEN_HARVEST_MULTIPLIER, GARDEN_SET_SIZE, GARDEN_SIZE } from "@/lib/garden";
+import {
+  GARDEN_SET_SIZE,
+  GARDEN_SIZE,
+  HARVEST_DAILY_INTEREST,
+  HARVEST_MAX_INTEREST_DAYS,
+  HARVEST_MAX_MULTIPLIER,
+} from "@/lib/garden";
 
 import { PlantTypeForm } from "./PlantTypeForm";
 import { PlantTypeRow } from "./PlantTypeRow";
@@ -31,7 +37,12 @@ export default async function PlantTypesAdminPage() {
 
       <p className="pixel-card bg-amber-50 p-4 text-sm text-slate-600">
         花园是 {GARDEN_SIZE} 格。孩子把<b>每种上架的植物都种够 {GARDEN_SET_SIZE} 棵</b>
-        就算集齐一整套，可以一次性收获换回<b>成本的 {GARDEN_HARVEST_MULTIPLIER} 倍</b>阳光，然后开始新一轮。
+        就算集齐一整套，可以一次性收获换成阳光，然后开始新一轮。
+        <br />
+        收获给多少<b>按每棵植物养了多少天算利息</b>：每天 {Math.round(HARVEST_DAILY_INTEREST * 100)}
+        %，最多算 {HARVEST_MAX_INTEREST_DAYS} 天，也就是最高 {HARVEST_MAX_MULTIPLIER} 倍。
+        当天种下当天收获没有利息（只拿回本金）——这样「种满就收、反复刷阳光」没有任何好处，
+        孩子只能靠真的把植物养住来赚这份利息。
         所以上架的种类最好正好 {maxTypes} 种
         {activeCount > maxTypes && (
           <span className="text-nes-red">
