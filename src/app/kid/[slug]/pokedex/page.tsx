@@ -157,8 +157,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </div>
       </section>
 
-      {/* 今天遇到的宝可梦 —— 先看到有谁，再决定用什么球。这是每天必看的，不放进滚动区 */}
-      <section className="flex shrink-0 flex-col gap-3">
+      {/*
+        今天遇到的宝可梦。这一块必须是**伸缩区**（min-h-0 flex-1 overflow-y-auto）：
+        牌库搬走之后这一页一个 flex-1 都没有了，所有块都是 shrink-0，
+        内容一超过一屏就被 h-dvh 的 overflow-hidden 从底部裁掉——
+        连同底部那排导航一起，孩子就再也跳不到别的页面了。
+      */}
+      <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
           <Pinyin text="今天遇到了" /> 👀
         </h2>

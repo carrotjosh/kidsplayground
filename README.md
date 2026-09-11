@@ -166,6 +166,7 @@ npm run db:studio  # 打开 Prisma Studio 可视化查看/修改数据库数据
 npm run check:economy    # 经济自检：日薪、派生金额、四条不变量、校准幂等、图鉴解锁
 npm run check:isolation  # 多租户隔离自检：拿 A 的身份去动 B 的数据，逐条断言必须失败
 npm run check:pinyin     # 扫描孩子端全部文案的拼音，重点核对多音字
+npm run check:layout     # 孩子端每一页都锁在一屏内、且底部导航不会被内容裁掉
 ```
 
 ## 后续可以迭代的方向（第一版故意没做）
