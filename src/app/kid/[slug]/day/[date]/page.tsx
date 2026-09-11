@@ -41,8 +41,9 @@ export default async function KidDayPage({
   const isRestDay = detail.dayType === "HOLIDAY" || detail.dayType === "WEEKEND";
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-4 p-4 md:max-w-3xl lg:max-w-4xl lg:gap-5 lg:p-8">
-      <header className="flex items-center justify-between gap-3">
+    // 同其它孩子端页面：框固定一屏，只让任务列表自己滚
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-4xl lg:gap-4 lg:p-6">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-xl text-white lg:text-3xl">
           <Pinyin text={formatDateWithWeekday(date)} />
         </h1>
@@ -50,7 +51,7 @@ export default async function KidDayPage({
       </header>
 
       {/* 当天小结：拿了多少阳光、算不算达标、是不是休息日 */}
-      <section className="pixel-card flex flex-wrap items-center justify-between gap-3 bg-white p-4 lg:p-5">
+      <section className="pixel-card flex shrink-0 flex-wrap items-center justify-between gap-3 bg-white p-4 lg:p-5">
         <p className="kid-text text-xl text-slate-800 lg:text-2xl">
           <Pinyin text="这天拿到" />{" "}
           <span className="text-2xl text-amber-600 lg:text-4xl">{detail.earned}</span> ☀️
@@ -87,7 +88,7 @@ export default async function KidDayPage({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
+      <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
           <Pinyin text="这天要做的事" />
         </h2>
@@ -148,6 +149,7 @@ export default async function KidDayPage({
       {/* 日历就在首页上，所以"回到日历"带上 ?month= 就能回到孩子刚才在看的那个月。 */}
       <div className="mt-auto">
         <KidNavBar
+          compact
           items={[
             { href: `/kid/${slug}?month=${month}`, label: "我的打卡日历", emoji: "⬅️", tone: "sky" },
             collectionNavItem(child.theme, slug),

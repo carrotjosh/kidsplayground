@@ -37,8 +37,10 @@ export default async function RewardsPage({
   const cooldowns = await getCooldownStates(child.id, rewards);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-8 lg:p-10 2xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-3">
+    // h-dvh + overflow-hidden：孩子端跑在 iPad / 学习机上，整页滚动在触屏上很容易误触，
+    // 而且滚下去之后底部那排导航就看不见了。页面框固定成一屏，只让礼物列表自己滚。
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text="礼物商店" /> 🎁
         </h1>
@@ -46,7 +48,8 @@ export default async function RewardsPage({
       </header>
 
       {/* 和花园页的植物卡片用同一套断点，两页的卡片节奏一致 */}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* min-h-0 是必须的：不写的话 flex 子项不会缩到内容高度以下，overflow 就永远不生效 */}
+      <section className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 lg:grid-cols-4">
         {rewards.length === 0 ? (
           <p className="pixel-card kid-text col-span-full bg-white p-6 text-center text-lg text-slate-500 lg:p-10 lg:text-2xl">
             <Pinyin text="还没有礼物，等家长上架吧" /> 🎁
@@ -86,6 +89,7 @@ export default async function RewardsPage({
       </section>
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
           collectionNavItem(child.theme, slug),

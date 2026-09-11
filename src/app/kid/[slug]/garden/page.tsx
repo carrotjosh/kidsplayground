@@ -69,8 +69,10 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
   const aliveByType = new Map(progress.entries.map((e) => [e.plantTypeId, e.alive]));
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-6 lg:p-8 2xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-3">
+    // 框固定一屏。花园棋盘按**剩余高度**撑成正方形（见下面那段注释），
+    // 不再是按宽度定高——横屏平板上 6×6 按宽度算会高到屏幕装不下。
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text="我的花园" /> 🌻
         </h1>
@@ -100,8 +102,8 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         </section>
       )}
 
-      {/* 集卡进度：每种植物要种够 GARDEN_SET_SIZE 棵，集齐就能一次性收获换阳光 */}
-      <section className="pixel-card flex flex-col gap-3 bg-white p-4 lg:p-5">
+      {/* 集卡进度：每种植物要种够 setSize 棵，集齐就能一次性收获换阳光 */}
+      <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="kid-text text-lg text-slate-800 lg:text-xl">
             <Pinyin text={`每种植物种够 ${setSize} 棵，就能一次收获`} />{" "}
@@ -178,14 +180,24 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         )}
       </section>
 
+      {/*
+        棋盘吃掉剩下的全部高度，并做成正方形（h-full aspect-square）。
+        原来是给格子加 aspect-square、由宽度决定高度——那在横屏平板上会算出
+        比屏幕还高的棋盘，整页只能滚。现在改成先定高、再由高度反推宽度，
+        行列都用 1fr，格子自然还是方的，4×4 到 6×6 都能整屏放下。
+      */}
+      <div className="flex min-h-0 flex-1 items-center justify-center">
       <section
-        className="pixel-card grid gap-3 bg-white p-4 lg:p-6"
-        style={{ gridTemplateColumns: `repeat(${side}, minmax(0, 1fr))` }}
+        className="pixel-card grid aspect-square h-full gap-2 bg-white p-3 lg:gap-3 lg:p-4"
+        style={{
+          gridTemplateColumns: `repeat(${side}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${side}, minmax(0, 1fr))`,
+        }}
       >
         {slots.map((plant, i) => (
           <div
             key={i}
-            className="pixel-border flex aspect-square items-center justify-center bg-amber-100 p-1 text-3xl lg:text-5xl"
+            className="pixel-border flex min-h-0 items-center justify-center bg-amber-100 p-1 text-2xl lg:text-4xl"
           >
             {plant ? (
               // floatDelay 按格子编号错开，十六棵植物就不会整整齐齐一起上下
@@ -201,14 +213,18 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
           </div>
         ))}
       </section>
+      </div>
 
-      <section className="flex flex-col gap-3">
+      {/* 植物商店。种类最多 6 种，横向排一行，高度固定不参与伸缩 */}
+      <section className="flex shrink-0 flex-col gap-2">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
           <Pinyin text="种点什么？" />
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* flex + flex-1 而不是固定列数：植物种数会随花园升级从 4 变到 6，
+            固定 4 列的话第 5、6 种会掉到第二行、把棋盘挤出屏幕 */}
+        <div className="flex flex-wrap gap-2 lg:gap-3">
           {plantTypes.length === 0 ? (
-            <p className="pixel-card kid-text col-span-full bg-white p-6 text-center text-slate-500">
+            <p className="pixel-card kid-text w-full bg-white p-6 text-center text-slate-500">
               <Pinyin text="还没有可以种的植物，等家长上架吧" />
             </p>
           ) : (
@@ -224,8 +240,9 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
                     : `还差 ${pt.cost - balance} 阳光`;
 
               return (
+                // min-w-28 保底：种类多的时候在窄屏上换行，而不是挤成一条竖线
+                <div key={pt.id} className="min-w-28 flex-1">
                 <ShopCard
-                  key={pt.id}
                   emoji={pt.emoji ?? "🌱"}
                   art={
                     <PlantSprite
@@ -246,6 +263,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
                     label={label}
                   />
                 </ShopCard>
+                </div>
               );
             })
           )}
@@ -253,6 +271,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
       </section>
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
           { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },

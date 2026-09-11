@@ -41,15 +41,16 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
   const progress = levelProgress(level, earned);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-4xl lg:gap-6 lg:p-8">
-      <header className="flex items-center justify-between gap-3">
+    // 同其它孩子端页面：框固定一屏，只让下面那条长长的等级列表自己滚
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-4xl lg:gap-4 lg:p-6">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text="等级之路" /> 🏅
         </h1>
         <PointsBadge balance={balance} />
       </header>
 
-      <section className="pixel-card flex flex-col gap-2 bg-white p-4 lg:p-5">
+      <section className="pixel-card flex shrink-0 flex-col gap-2 bg-white p-4 lg:p-5">
         <p className="kid-text text-lg text-slate-800 lg:text-xl">
           <Pinyin text={`你现在是 ${progress.level} 级「${progress.title}」`} />
         </p>
@@ -76,7 +77,7 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
         </p>
       </section>
 
-      <section className="flex flex-col gap-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {roadmap.map((entry) => (
           <div
             key={entry.level}
@@ -127,7 +128,6 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
             </span>
           </div>
         ))}
-      </section>
 
       {/* 花园之路。和等级是两条独立的线：等级看累计打卡挣的阳光，花园看收获了几轮。
           不合并是因为叠两套门槛之后"我到底什么时候能拿到寒冰射手"就说不清了。 */}
@@ -182,8 +182,10 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
           ))}
         </section>
       )}
+      </div>
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
           collectionNavItem(child.theme, slug),

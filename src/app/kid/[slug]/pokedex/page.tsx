@@ -112,8 +112,10 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
     POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-6 lg:p-8 2xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-3">
+    // 框固定一屏。上半截（进度 + 今天遇到谁）是每天都要看的，必须常驻；
+    // 牌库会长到几百张，只让它自己滚。
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text="我的图鉴" /> 📕
         </h1>
@@ -143,7 +145,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       )}
 
       {/* 收集进度 */}
-      <section className="pixel-card flex flex-col gap-2 bg-white p-4 lg:p-5">
+      <section className="pixel-card flex shrink-0 flex-col gap-2 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="kid-text text-lg text-slate-800 lg:text-xl">
             <Pinyin text="已经收集" />{" "}
@@ -174,8 +176,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </div>
       </section>
 
-      {/* 今天遇到的宝可梦 —— 先看到有谁，再决定用什么球 */}
-      <section className="flex flex-col gap-3">
+      {/* 今天遇到的宝可梦 —— 先看到有谁，再决定用什么球。这是每天必看的，不放进滚动区 */}
+      <section className="flex shrink-0 flex-col gap-3">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
           <Pinyin text="今天遇到了" /> 👀
         </h2>
@@ -295,6 +297,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         )}
       </section>
 
+      {/* 牌库和跑掉的合成一个滚动区：它们会长到几百张，而上面那些每天都要看 */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       {/* 牌库：按种类归组，同一种抓到多只显示 ×N。
           代表卡挑同种里最稀有/最新的那只（owned 已经按 rarity desc, caughtAt desc 排过）。 */}
       <section className="flex flex-col gap-3">
@@ -341,8 +345,10 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           </div>
         </section>
       )}
+      </div>
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
           { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },

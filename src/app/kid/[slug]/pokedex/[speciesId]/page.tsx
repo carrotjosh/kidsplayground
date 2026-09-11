@@ -57,8 +57,10 @@ export default async function SpeciesDetailPage({
   const levels = flattenByDepth(chain.root);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-4xl lg:gap-6 lg:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    // 横屏平板上分两栏：左边立绘和数值，右边克制、进化、我抓到的。
+    // 一栏竖着排的话这几块加起来必然超过一屏，而这一页正是孩子会盯着看的地方。
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text={species.nameZh} />
         </h1>
@@ -67,8 +69,9 @@ export default async function SpeciesDetailPage({
         </span>
       </header>
 
-      {/* 立绘 + 属性 + 六项数值 */}
-      <section className="pixel-card flex flex-wrap items-center gap-5 bg-white p-4 lg:p-6">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-2 lg:gap-4 lg:overflow-hidden">
+      {/* 左栏：立绘 + 属性 + 六项数值 */}
+      <section className="pixel-card flex flex-wrap items-center gap-4 self-start bg-white p-4 lg:p-5">
         <Image
           src={pokemonArtPath(species.id)}
           alt={species.nameZh}
@@ -114,8 +117,10 @@ export default async function SpeciesDetailPage({
         </div>
       </section>
 
+      {/* 右栏。三块加起来仍可能超过一栏高度，所以这一栏自己能滚，页面框不动 */}
+      <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto">
       {/* 怕什么。这是这一页最有嚼头的部分，位置排在进化前面 */}
-      <section className="pixel-card flex flex-col gap-3 bg-white p-4 lg:p-6">
+      <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
         <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
           <Pinyin text="它怕什么" /> ⚔️
         </h2>
@@ -165,7 +170,7 @@ export default async function SpeciesDetailPage({
 
       {/* 进化路径。按层横排，伊布那种一变多的也画得对 */}
       {levels.length > 1 && (
-        <section className="pixel-card flex flex-col gap-3 bg-white p-4 lg:p-6">
+        <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
           <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
             <Pinyin text="进化路线" /> 🔄
           </h2>
@@ -204,7 +209,7 @@ export default async function SpeciesDetailPage({
       )}
 
       {/* 我抓到的这几只。每只的性别/特性/闪光都是独立随机的，所以要分开列 */}
-      <section className="pixel-card flex flex-col gap-3 bg-white p-4 lg:p-6">
+      <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
         <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
           <Pinyin text={`我抓到的（${mine.length} / ${goal} 只算收集完成）`} /> 🎒
         </h2>
@@ -234,8 +239,11 @@ export default async function SpeciesDetailPage({
           </ul>
         )}
       </section>
+      </div>
+      </div>
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}/pokedex`, label: "回图鉴", emoji: "⬅️", tone: "sky" },
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "📋", tone: "green" },
