@@ -214,38 +214,65 @@ async function main() {
     if (!preview.rows.some((r) => r.from === 0)) pass("零成本礼物不参与校准");
     else fail("零成本礼物", "被算进了校准");
 
-    // 直接调 lib 层做校准（action 需要会话上下文，脚本里造不出来）
-    const rate = await dailyEarnRate(child.id);
-    const factor = rate / child.priceBaselineRate;
-    const scale = (n: number) => Math.max(1, Math.round(n * factor));
-    const [rewards, balls, plants] = await Promise.all([
-      prisma.reward.findMany({ where: { childId: child.id, cost: { gt: 0 } } }),
-      prisma.ballType.findMany({ where: { childId: child.id } }),
-      prisma.plantType.findMany({ where: { childId: child.id } }),
-    ]);
-    await prisma.$transaction([
-      ...rewards.map((r) =>
-        prisma.reward.update({ where: { id: r.id }, data: { cost: scale(r.cost) } })
-      ),
-      ...balls.map((b) =>
-        prisma.ballType.update({ where: { id: b.id }, data: { cost: scale(b.cost) } })
-      ),
-      ...plants.map((p) =>
-        prisma.plantType.update({ where: { id: p.id }, data: { cost: scale(p.cost) } })
-      ),
-      prisma.child.update({
-        where: { id: child.id },
-        data: { dailyGoalPoints: scale(20), priceBaselineRate: rate },
-      }),
-    ]);
+    // 直接调 lib 层做校准（action 需要会话上下文，脚本里造不出来）。
+    // 这段必须和 economy/actions.ts 的 recalibrateAction 保持一致，
+    // 尤其是**基准值写的是 `原基准 × 倍数` 而不是当前日薪**——部分校准全靠这一点才诚实。
+    async function calibrate(factor: number) {
+      const scale = (n: number) => Math.max(1, Math.round(n * factor));
+      const c = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
+      const [rewards, balls, plants] = await Promise.all([
+        prisma.reward.findMany({ where: { childId: child.id, cost: { gt: 0 } } }),
+        prisma.ballType.findMany({ where: { childId: child.id } }),
+        prisma.plantType.findMany({ where: { childId: child.id } }),
+      ]);
+      await prisma.$transaction([
+        ...rewards.map((r) =>
+          prisma.reward.update({ where: { id: r.id }, data: { cost: scale(r.cost) } })
+        ),
+        ...balls.map((b) =>
+          prisma.ballType.update({ where: { id: b.id }, data: { cost: scale(b.cost) } })
+        ),
+        ...plants.map((p) =>
+          prisma.plantType.update({ where: { id: p.id }, data: { cost: scale(p.cost) } })
+        ),
+        prisma.child.update({
+          where: { id: child.id },
+          data: {
+            dailyGoalPoints: scale(c.dailyGoalPoints),
+            priceBaselineRate: scale(c.priceBaselineRate),
+          },
+        }),
+      ]);
+    }
 
+    // ---- 部分校准：只涨 15%，基准值必须跟着只走 15% ----
+    // 这是最容易写错的一处：图省事把基准直接设成当前日薪的话，页面下次就会显示
+    // "没有漂移"，而实际上价格还便宜着 31%——等于系统对家长撒了谎。
+    console.log("\n【部分校准】只调一部分时，基准值只能走一部分");
+    await calibrate(1.15);
+    expect(
+      "只涨 15% 后「一个小玩具」500 →",
+      (await prisma.reward.findUniqueOrThrow({ where: { id: toyBefore.id } })).cost,
+      575
+    );
+    const partial = await auditEconomy(child.id);
+    expect("基准值 25 → (不是 38)", partial.baseline, 29);
+    expect("剩余漂移", Number(partial.drift.toFixed(2)), 1.31);
+    expectFinding(partial.findings, "日薪从 29 变成了 38", "仍然如实提示还剩多少没调");
+
+    // ---- 再调到位 ----
+    const rate = await dailyEarnRate(child.id);
+    await calibrate(rate / partial.baseline);
     const toyAfter = await prisma.reward.findUniqueOrThrow({ where: { id: toyBefore.id } });
-    expect("校准后「一个小玩具」", toyAfter.cost, 760);
+    // 分两步走会因为中间四舍五入和一步到位差几个阳光（760 vs 754），这是可以接受的
+    if (Math.abs(toyAfter.cost - 760) <= 10) pass(`分两步调完「一个小玩具」= ${toyAfter.cost}（一步是 760）`);
+    else fail("分两步的累计误差", `变成了 ${toyAfter.cost}，离 760 太远`);
     const after = await auditEconomy(child.id);
-    expect("校准后漂移倍数", after.drift, 1);
+    expect("调到位后的基准值", after.baseline, 38);
+    expect("调到位后漂移倍数", after.drift, 1);
     if ((await recalibrationPreview(child.id)).rows.length === 0) pass("再校准一次没有任何变动（幂等）");
     else fail("校准幂等", "第二次仍然想改价");
-    if (!after.findings.some((f) => f.title.includes("日薪从"))) pass("校准后不再提示漂移");
+    if (!after.findings.some((f) => f.title.includes("日薪从"))) pass("调到位后不再提示漂移");
     else fail("校准后", "还在提示漂移");
 
     // ---------- 6. 图鉴分地区解锁 ----------

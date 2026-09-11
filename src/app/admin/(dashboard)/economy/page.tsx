@@ -4,7 +4,7 @@ import { KidTheme } from "@/generated/prisma/client";
 import { RARITY_LABELS } from "@/lib/rarity";
 
 import { acceptCurrentPricesAction, recalibrateAction } from "./actions";
-import { RecalibrateButton } from "./RecalibrateButton";
+import { RecalibrateForm } from "./RecalibrateForm";
 
 export const dynamic = "force-dynamic";
 
@@ -60,18 +60,11 @@ export default async function EconomyAdminPage() {
           </p>
         </div>
         {hasDrift && (
-          <div className="flex flex-col items-end gap-2">
-            <RecalibrateButton
-              action={recalibrateAction}
-              factor={preview.factor}
-              count={preview.rows.length}
-            />
-            <form action={acceptCurrentPricesAction}>
-              <button type="submit" className="text-xs text-slate-500 underline">
-                价格就这样，别再提示了
-              </button>
-            </form>
-          </div>
+          <form action={acceptCurrentPricesAction}>
+            <button type="submit" className="text-xs text-slate-500 underline">
+              价格就这样，别再提示了
+            </button>
+          </form>
         )}
       </div>
 
@@ -98,19 +91,19 @@ export default async function EconomyAdminPage() {
         <p className="pixel-card bg-green-50 p-4 text-sm text-green-800">✅ 没有发现问题。</p>
       )}
 
-      {/* ---- 校准预览 ---- */}
+      {/* ---- 校准 ---- */}
       {hasDrift && (
-        <div className="pixel-card flex flex-col gap-2 bg-white p-5">
-          <h2 className="font-semibold">校准预览（按 {preview.factor.toFixed(2)}×）</h2>
-          <p className="text-sm text-slate-500">点上面的按钮才会真的改。</p>
-          <div className="flex flex-wrap gap-2 text-sm">
-            {preview.rows.map((r) => (
-              <span key={`${r.kind}-${r.label}`} className="border-2 border-slate-200 px-2 py-1">
-                {r.label} <span className="text-slate-400">{r.from}</span> →{" "}
-                <b className="text-slate-800">{r.to}</b>
-              </span>
-            ))}
-          </div>
+        <div className="pixel-card flex flex-col gap-3 bg-white p-5">
+          <h2 className="font-semibold">调整价格</h2>
+          <p className="text-sm text-slate-500">
+            不一定要一次调到位——大礼物一次涨三成，对孩子是个不小的打击，分两三次慢慢来更容易接受。
+            只调一部分的话，基准值会记成「调到哪儿了」，这一页会继续如实显示还剩多少没调。
+          </p>
+          <RecalibrateForm
+            action={recalibrateAction}
+            rows={preview.rows.map((r) => ({ kind: r.kind, label: r.label, from: r.from }))}
+            fullPercent={Math.round((preview.factor - 1) * 100)}
+          />
         </div>
       )}
 
