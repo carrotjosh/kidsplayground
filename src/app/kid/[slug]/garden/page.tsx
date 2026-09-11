@@ -7,13 +7,16 @@ import { PlantSprite } from "@/components/PlantSprite";
 import { PointsBadge } from "@/components/PointsBadge";
 import { ShopCard } from "@/components/ShopCard";
 import { KidTheme, PlantStatus } from "@/generated/prisma/client";
+import { ensurePlantTypes } from "@/lib/bootstrap";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import {
+  checkGardenStageUp,
   computeGardenProgress,
-  GARDEN_COLS,
-  GARDEN_SET_SIZE,
-  GARDEN_SIZE,
+  gardenSetSize,
+  gardenSide,
+  gardenSize,
+  GARDEN_STAGES,
   HARVEST_MAX_INTEREST_DAYS,
   getHarvestedRounds,
   settleGardenForChild,
@@ -30,6 +33,17 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
   if (!child) notFound();
   // 主题互斥：图鉴主题的孩子不该看到花园，直接送回首页
   if (child.theme !== KidTheme.GARDEN) redirect(`/kid/${slug}`);
+
+  // 分级功能上线前建的档案只有 4 种植物，没有可解锁的新品种就永远升不了级，先补上（幂等）
+  await ensurePlantTypes(child.id);
+
+  // 够条件就把花园升一级。**必须排在渲染之前**——放后面的话这一次看到的还是旧尺寸，
+  // "格子多了一圈、多了一种新植物"那个瞬间就没了（同图鉴的 checkRegionUnlock）。
+  const levelUp = await checkGardenStageUp(child.id);
+  const stage = levelUp?.stage ?? child.gardenStage;
+  const setSize = gardenSetSize(stage);
+  const size = gardenSize(stage);
+  const side = gardenSide(stage);
 
   // 懒结算：把欠下的僵尸判定补齐，返回这次新发生的事件用于一次性提示。
   const events = await settleGardenForChild(child.id);
@@ -49,9 +63,9 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
   ]);
 
   const slotMap = new Map(alivePlants.map((p) => [p.slot, p]));
-  const slots = Array.from({ length: GARDEN_SIZE }, (_, i) => slotMap.get(i) ?? null);
-  const isFull = alivePlants.length >= GARDEN_SIZE;
-  const progress = computeGardenProgress(plantTypes, alivePlants);
+  const slots = Array.from({ length: size }, (_, i) => slotMap.get(i) ?? null);
+  const isFull = alivePlants.length >= size;
+  const progress = computeGardenProgress(stage, plantTypes, alivePlants);
   const aliveByType = new Map(progress.entries.map((e) => [e.plantTypeId, e.alive]));
 
   return (
@@ -62,6 +76,15 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         </h1>
         <PointsBadge balance={balance} />
       </header>
+
+      {/* 升级是花园唯一的"长期目标"节点，位置放在最上面 */}
+      {levelUp && (
+        <p className="pixel-card kid-text bg-nes-yellow p-4 text-center text-slate-900 lg:p-5">
+          <Pinyin
+            text={`🎉 花园升级到 ${levelUp.side}×${levelUp.side} 啦！还解锁了新植物：${levelUp.unlockedPlant}`}
+          />
+        </p>
+      )}
 
       {events.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -81,14 +104,19 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
       <section className="pixel-card flex flex-col gap-3 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="kid-text text-lg text-slate-800 lg:text-xl">
-            <Pinyin text={`每种植物种够 ${GARDEN_SET_SIZE} 棵，就能一次收获`} />{" "}
+            <Pinyin text={`每种植物种够 ${setSize} 棵，就能一次收获`} />{" "}
             <span className="text-amber-600">{progress.bonus}</span> ☀️
           </p>
-          {harvestedRounds > 0 && (
-            <p className="kid-text text-sm text-slate-500 lg:text-base">
-              <Pinyin text={`已经收获过 ${harvestedRounds} 次`} /> 🏅
-            </p>
-          )}
+          <p className="kid-text text-sm text-slate-500 lg:text-base">
+            <Pinyin
+              text={
+                stage >= GARDEN_STAGES.length
+                  ? `第 ${stage} 级花园（最大啦）`
+                  : `第 ${stage} 级花园 ${side}×${side}`
+              }
+            />
+            {harvestedRounds > 0 && <> · <Pinyin text={`收获过 ${harvestedRounds} 次`} /> 🏅</>}
+          </p>
         </div>
 
         {progress.entries.length === 0 ? (
@@ -121,9 +149,9 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
 
         {!progress.achievable && progress.entries.length > 0 && (
           <p className="kid-text text-sm text-nes-red">
-            现在的花园装不下一整套（{progress.entries.length} 种 × {GARDEN_SET_SIZE} 棵
+            现在的花园装不下一整套（{progress.entries.length} 种 × {setSize} 棵
             {progress.strayAlive > 0 && ` + ${progress.strayAlive} 棵已下架的植物`} 超过了{" "}
-            {GARDEN_SIZE} 个格子），请家长在「植物目录」里调整一下。
+            {size} 个格子），请家长在「植物目录」里调整一下。
           </p>
         )}
 
@@ -152,7 +180,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
 
       <section
         className="pixel-card grid gap-3 bg-white p-4 lg:p-6"
-        style={{ gridTemplateColumns: `repeat(${GARDEN_COLS}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${side}, minmax(0, 1fr))` }}
       >
         {slots.map((plant, i) => (
           <div
@@ -186,9 +214,9 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
           ) : (
             plantTypes.map((pt, i) => {
               const enough = balance >= pt.cost;
-              const setDone = (aliveByType.get(pt.id) ?? 0) >= GARDEN_SET_SIZE;
+              const setDone = (aliveByType.get(pt.id) ?? 0) >= setSize;
               const label = setDone
-                ? `已种满 ${GARDEN_SET_SIZE} 棵`
+                ? `已种满 ${setSize} 棵`
                 : isFull
                   ? "花园满了"
                   : enough
@@ -209,7 +237,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
                   }
                   title={pt.title}
                   cost={pt.cost}
-                  note={`花园里 ${aliveByType.get(pt.id) ?? 0} / ${GARDEN_SET_SIZE} 棵`}
+                  note={`花园里 ${aliveByType.get(pt.id) ?? 0} / ${setSize} 棵`}
                 >
                   <ConfirmActionButton
                     action={plantSeedAction.bind(null, slug, pt.id)}

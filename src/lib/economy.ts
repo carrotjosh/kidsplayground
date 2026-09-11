@@ -135,7 +135,9 @@ export const PRICE_BANDS = {
   ballGreat: { label: "超级球", min: 0.6, max: 1.0 },
   ballUltra: { label: "高级球", min: 1.5, max: 2.2 },
   ballMaster: { label: "大师球", min: 6, max: 10 },
-  plant: { label: "植物", min: 0.25, max: 1.4 },
+  // 上限放到 2.5 天：花园升级会解锁更贵的品种（寒冰射手 40、大嘴花 55），
+  // 按第 1 级那四种（8~30）卡上限的话，一升级就会开始误报"偏贵"。
+  plant: { label: "植物", min: 0.25, max: 2.5 },
   dailyGoal: { label: "每日达标线", min: 0.6, max: 0.9 },
 } as const;
 

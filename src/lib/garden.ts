@@ -10,13 +10,41 @@ import {
 } from "@/lib/date";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
 
-/** 花园是 4×4 的格子。 */
-export const GARDEN_COLS = 4;
-export const GARDEN_ROWS = 4;
-export const GARDEN_SIZE = GARDEN_COLS * GARDEN_ROWS; // 16
+/**
+ * 花园分级：第 N 级是 side×side 的格子，需要 side 种植物、每种各 side 棵。
+ *
+ * 一个数字同时定死三件事（边长 / 种类数 / 每种棵数），这不是巧合而是约束：
+ * "每种各 K 棵 × M 种 = 格子总数"必须成立，否则孩子要么轻松集齐、要么永远集不齐。
+ * 取 M = K = side 是唯一能让格子刚好铺满的自然解。
+ *
+ * **为什么要分级。** 原来永远是 4×4、永远那四种植物，第 2 轮和第 20 轮一模一样，
+ * 孩子玩三轮就腻了——图鉴那边已经有 386 只 + 分地区解锁撑着六年，花园却零长期内容。
+ * 每升一级多解锁一种植物、格子多一圈，成本按平方长（272 → 540 → 978），
+ * 难度和成就感自然递升。
+ *
+ * 想加第 4 级只要往这个数组里加一个 7，再在 bootstrap.ts 里补一种植物、
+ * 给 PlantSprite 画一张图就行。
+ */
+export const GARDEN_STAGES = [4, 5, 6] as const;
 
-/** 一"套"= 每种植物要种够几棵。4 种植物 × 各 4 棵 = 16，正好铺满 4×4 的花园。 */
-export const GARDEN_SET_SIZE = 4;
+/** 收获多少轮升一级。 */
+export const HARVEST_ROUNDS_PER_STAGE = 3;
+
+/** 第 stage 级花园的边长。越界的 stage 一律夹到合法范围，不抛错。 */
+export function gardenSide(stage: number): number {
+  return GARDEN_STAGES[Math.min(Math.max(stage, 1), GARDEN_STAGES.length) - 1];
+}
+
+/** 第 stage 级花园一共几个格子。 */
+export function gardenSize(stage: number): number {
+  const side = gardenSide(stage);
+  return side * side;
+}
+
+/** 第 stage 级每种植物要种够几棵（= 边长 = 需要的植物种类数）。 */
+export function gardenSetSize(stage: number): number {
+  return gardenSide(stage);
+}
 
 /**
  * 收获奖励 = 每棵植物的成本 × (1 + 每天利息 × 它活了多少天)，利息最多算 MAX 天。
@@ -106,11 +134,11 @@ export type GardenProgressEntry = {
 
 export type GardenProgress = {
   entries: GardenProgressEntry[];
-  /** 每个上架品种都种够 GARDEN_SET_SIZE 棵 —— 可以收获了 */
+  /** 每个上架品种都种够 setSize 棵 —— 可以收获了 */
   complete: boolean;
   /** 花园里还活着、但已经不属于当前目标的植物棵数（品种被家长下架或删掉了），它们照样占格子 */
   strayAlive: number;
-  /** 一整套 + 那些占着格子的"编外"植物，能不能塞进 GARDEN_SIZE 个格子 */
+  /** 一整套 + 那些占着格子的"编外"植物，能不能塞进这一级的格子里 */
   achievable: boolean;
   /** 现在园子里这些植物一共花了多少阳光 */
   spent: number;
@@ -131,6 +159,7 @@ export type GardenProgress = {
  * 实际上格子不够"的死局。
  */
 export function computeGardenProgress(
+  stage: number,
   activeTypes: { id: string; title: string; emoji: string | null }[],
   alivePlants: {
     plantTypeId: string | null;
@@ -139,6 +168,8 @@ export function computeGardenProgress(
     plantedOnDate?: Date | null;
   }[]
 ): GardenProgress {
+  const setSize = gardenSetSize(stage);
+  const size = gardenSize(stage);
   const activeIds = new Set(activeTypes.map((t) => t.id));
   const aliveByType = new Map<string, number>();
   let strayAlive = 0;
@@ -155,7 +186,7 @@ export function computeGardenProgress(
     title: type.title,
     emoji: type.emoji,
     alive: aliveByType.get(type.id) ?? 0,
-    needed: GARDEN_SET_SIZE,
+    needed: setSize,
   }));
 
   const { spent, bonus, interestDays } = computeHarvestBonus(alivePlants);
@@ -165,7 +196,7 @@ export function computeGardenProgress(
     complete: entries.length > 0 && entries.every((e) => e.alive >= e.needed),
     strayAlive,
     achievable:
-      entries.length > 0 && entries.length * GARDEN_SET_SIZE + strayAlive <= GARDEN_SIZE,
+      entries.length > 0 && entries.length * setSize + strayAlive <= size,
     spent,
     bonus,
     interestDays,
@@ -279,6 +310,11 @@ export async function plantSeed(plantTypeId: string, childId: string) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
 
+    const child = await tx.child.findUnique({ where: { id: childId } });
+    if (!child) throw new ActionError("找不到这个孩子");
+    const setSize = gardenSetSize(child.gardenStage);
+    const size = gardenSize(child.gardenStage);
+
     const plantType = await tx.plantType.findUnique({ where: { id: plantTypeId } });
     if (!plantType || plantType.childId !== childId || !plantType.active) {
       throw new ActionError("这种植物现在没法种");
@@ -298,16 +334,16 @@ export async function plantSeed(plantTypeId: string, childId: string) {
       select: { slot: true, plantTypeId: true },
     });
 
-    // 每种最多 GARDEN_SET_SIZE 棵。不设这个上限的话，孩子种了 5 棵向日葵就再也凑不齐
+    // 每种最多 setSize 棵。不设这个上限的话，孩子种了 5 棵向日葵就再也凑不齐
     // "4 种 × 各 4 棵 = 16 格"这一整套了（5+4+4+4 = 17 > 16），会走进一个自己解不开的死局。
     const sameTypeAlive = alivePlants.filter((p) => p.plantTypeId === plantType.id).length;
-    if (sameTypeAlive >= GARDEN_SET_SIZE) {
-      throw new ActionError(`${plantType.title}已经种够 ${GARDEN_SET_SIZE} 棵啦，换一种试试`);
+    if (sameTypeAlive >= setSize) {
+      throw new ActionError(`${plantType.title}已经种够 ${setSize} 棵啦，换一种试试`);
     }
 
     const occupied = new Set(alivePlants.map((p) => p.slot));
     let freeSlot = -1;
-    for (let i = 0; i < GARDEN_SIZE; i++) {
+    for (let i = 0; i < size; i++) {
       if (!occupied.has(i)) {
         freeSlot = i;
         break;
@@ -343,6 +379,50 @@ export async function plantSeed(plantTypeId: string, childId: string) {
   });
 }
 
+/**
+ * 够条件就把花园升一级：多一圈格子、多解锁一种植物。
+ *
+ * 和图鉴的 checkRegionUnlock 同构，包括调用时机——**必须在页面渲染之前调**，
+ * 否则孩子这一次看到的还是旧尺寸的花园，升级那个瞬间就没了。
+ *
+ * 一个刻意的保守判断：**没有可以解锁的新植物就不升级**。
+ * 升级会把"需要几种植物"从 4 变成 5，如果目录里凑不出第 5 种（家长把备用品种删了），
+ * 升上去的花园就永远集不齐——那是个孩子自己解不开的死局，宁可停在当前这一级。
+ */
+export async function checkGardenStageUp(
+  childId: string
+): Promise<{ stage: number; side: number; unlockedPlant: string } | null> {
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { gardenStage: true },
+  });
+  if (!child) return null;
+  if (child.gardenStage >= GARDEN_STAGES.length) return null;
+
+  const rounds = await getHarvestedRounds(childId);
+  if (rounds < child.gardenStage * HARVEST_ROUNDS_PER_STAGE) return null;
+
+  // 解锁最便宜的那个还没上架的品种。默认目录里新品种就是更贵的那些，
+  // 所以按价格升序拿正好等于"按设计顺序解锁"。
+  const next = await prisma.plantType.findFirst({
+    where: { childId, active: false },
+    orderBy: { cost: "asc" },
+  });
+  if (!next) return null;
+
+  // 带上当前级数做条件，两个请求同时触发时只有一个能改到，不会一次跳两级
+  const updated = await prisma.child.updateMany({
+    where: { id: childId, gardenStage: child.gardenStage },
+    data: { gardenStage: child.gardenStage + 1 },
+  });
+  if (updated.count === 0) return null;
+
+  await prisma.plantType.update({ where: { id: next.id }, data: { active: true } });
+
+  const stage = child.gardenStage + 1;
+  return { stage, side: gardenSide(stage), unlockedPlant: next.title };
+}
+
 /** 已经收获过几轮花园。用 GARDEN_BONUS 流水条数来数，不需要在 Child 上额外存一个计数字段。 */
 export async function getHarvestedRounds(childId: string): Promise<number> {
   return prisma.pointsLedger.count({
@@ -351,7 +431,7 @@ export async function getHarvestedRounds(childId: string): Promise<number> {
 }
 
 /**
- * 收获整座花园：集齐一整套（每种上架植物各 GARDEN_SET_SIZE 棵）之后，把所有植物一次性收走，
+ * 收获整座花园：集齐一整套（每种上架植物各 gardenSetSize 棵）之后，把所有植物一次性收走，
  * 按 GARDEN_HARVEST_MULTIPLIER 连本带利换成阳光，花园清空、开始新一轮。
  *
  * 植物不删除，而是标成 HARVESTED —— 和"被僵尸吃掉"区分开，历史记录完整保留；
@@ -363,6 +443,8 @@ export async function getHarvestedRounds(childId: string): Promise<number> {
 export async function harvestGarden(childId: string) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
+
+    const child = await tx.child.findUniqueOrThrow({ where: { id: childId } });
 
     const [activeTypes, alivePlants, previousRounds] = await Promise.all([
       tx.plantType.findMany({
@@ -383,9 +465,11 @@ export async function harvestGarden(childId: string) {
       tx.pointsLedger.count({ where: { childId, type: LedgerType.GARDEN_BONUS } }),
     ]);
 
-    const progress = computeGardenProgress(activeTypes, alivePlants);
+    const progress = computeGardenProgress(child.gardenStage, activeTypes, alivePlants);
     if (!progress.complete) {
-      throw new ActionError("花园还没集齐，每种植物都要种够 4 棵才能收获");
+      throw new ActionError(
+        `花园还没集齐，每种植物都要种够 ${gardenSetSize(child.gardenStage)} 棵才能收获`
+      );
     }
 
     const round = previousRounds + 1;

@@ -29,9 +29,15 @@ import {
 } from "../src/lib/economy";
 import { auditEconomy, recalibrationPreview } from "../src/lib/economyAudit";
 import {
+  checkGardenStageUp,
   computeHarvestBonus,
+  gardenSetSize,
+  gardenSide,
+  gardenSize,
+  GARDEN_STAGES,
   HARVEST_MAX_INTEREST_DAYS,
   HARVEST_MAX_MULTIPLIER,
+  HARVEST_ROUNDS_PER_STAGE,
   settleGardenForChild,
 } from "../src/lib/garden";
 import {
@@ -355,7 +361,71 @@ async function main() {
     await prisma.plant.deleteMany({ where: { childId: child.id } });
     await prisma.child.update({
       where: { id: child.id },
-      data: { theme: "POKEDEX", gardenSettledThrough: null },
+      data: { gardenSettledThrough: null },
+    });
+
+    // ---------- 花园分级 ----------
+    // 原来花园永远是 4×4、永远那四种植物，第 2 轮和第 20 轮一模一样。
+    console.log("\n【花园】每收获几轮升一级：格子多一圈、解锁一种新植物");
+    expect("各级边长", [...GARDEN_STAGES], [4, 5, 6]);
+    expect(
+      "第 1 级：4 种 × 各 4 棵 = 16 格",
+      [gardenSetSize(1), gardenSize(1)],
+      [4, 16]
+    );
+    expect("第 3 级：6 种 × 各 6 棵 = 36 格", [gardenSetSize(3), gardenSize(3)], [6, 36]);
+    expect("越界的级数夹到最大级", gardenSide(99), 6);
+
+    const activeAtStart = await prisma.plantType.count({
+      where: { childId: child.id, active: true },
+    });
+    expect("新建档案默认上架的植物种类", activeAtStart, gardenSetSize(1));
+
+    if ((await checkGardenStageUp(child.id)) === null) pass("一轮都没收获时不会升级");
+    else fail("零收获升级", "居然升级了");
+
+    // 伪造够数的收获流水（真跑一轮要种满 16 棵，这里只验升级判定本身）
+    for (let i = 0; i < HARVEST_ROUNDS_PER_STAGE; i++) {
+      await prisma.pointsLedger.create({
+        data: { childId: child.id, amount: 1, reason: `假收获 ${i}`, type: "GARDEN_BONUS" },
+      });
+    }
+    const up = await checkGardenStageUp(child.id);
+    expect(`收获满 ${HARVEST_ROUNDS_PER_STAGE} 轮后升到`, up?.stage, 2);
+    expect("新边长", up?.side, 5);
+    expect("顺带解锁的新植物", up?.unlockedPlant, "寒冰射手");
+    expect(
+      "上架种类数跟着变成 5",
+      await prisma.plantType.count({ where: { childId: child.id, active: true } }),
+      5
+    );
+    if ((await checkGardenStageUp(child.id)) === null) pass("轮数不够下一级时不会连升（幂等）");
+    else fail("连续升级", "又升了一级");
+
+    // 没有可解锁的品种时**不能**升级——升上去就是个永远集不齐的死局
+    for (let i = 0; i < HARVEST_ROUNDS_PER_STAGE; i++) {
+      await prisma.pointsLedger.create({
+        data: { childId: child.id, amount: 1, reason: `假收获 b${i}`, type: "GARDEN_BONUS" },
+      });
+    }
+    await prisma.plantType.updateMany({
+      where: { childId: child.id, active: false },
+      data: { active: true },
+    });
+    const blocked = await prisma.plantType.findMany({ where: { childId: child.id } });
+    await prisma.plantType.updateMany({
+      where: { childId: child.id, title: "大嘴花" },
+      data: { active: true },
+    });
+    if ((await checkGardenStageUp(child.id)) === null) pass("没有可解锁的新品种时拒绝升级");
+    else fail("死局保护", `在只有 ${blocked.length} 种植物时仍然升了级`);
+
+    await prisma.pointsLedger.deleteMany({
+      where: { childId: child.id, type: "GARDEN_BONUS" },
+    });
+    await prisma.child.update({
+      where: { id: child.id },
+      data: { theme: "POKEDEX", gardenStage: 1 },
     });
 
     // ---------- 6. 图鉴分地区解锁 ----------

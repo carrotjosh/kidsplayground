@@ -12,7 +12,7 @@ import {
   speciesMasteryBonus,
   type PriceBandKey,
 } from "@/lib/economy";
-import { GARDEN_SET_SIZE, GARDEN_SIZE } from "@/lib/garden";
+import { gardenSetSize, gardenSize } from "@/lib/garden";
 import { catchProbability } from "@/lib/pokedex";
 
 /**
@@ -95,7 +95,12 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
   const [child, rewards, balls, plants, rate] = await Promise.all([
     prisma.child.findUniqueOrThrow({
       where: { id: childId },
-      select: { dailyGoalPoints: true, priceBaselineRate: true, theme: true },
+      select: {
+        dailyGoalPoints: true,
+        priceBaselineRate: true,
+        theme: true,
+        gardenStage: true,
+      },
     }),
     prisma.reward.findMany({ where: { childId, active: true }, orderBy: { cost: "asc" } }),
     prisma.ballType.findMany({ where: { childId, active: true } }),
@@ -161,11 +166,14 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
   }
 
   // ---- 不变量 2：花园必须能集齐 ----
-  if (child.theme === "GARDEN" && plants.length * GARDEN_SET_SIZE !== GARDEN_SIZE) {
+  // 需要几种植物随花园级数变（4×4 要 4 种、5×5 要 5 种……），所以按孩子当前的级数算。
+  const setSize = gardenSetSize(child.gardenStage);
+  const size = gardenSize(child.gardenStage);
+  if (child.theme === "GARDEN" && plants.length * setSize !== size) {
     findings.push({
       level: "error",
-      title: `植物有 ${plants.length} 种，花园永远集不齐`,
-      detail: `花园是 ${GARDEN_SIZE} 格、每种要种满 ${GARDEN_SET_SIZE} 棵，所以必须正好 ${GARDEN_SIZE / GARDEN_SET_SIZE} 种。现在孩子怎么种都拿不到收获奖励。`,
+      title: `上架了 ${plants.length} 种植物，花园永远集不齐`,
+      detail: `现在是第 ${child.gardenStage} 级花园（${size} 格、每种要种满 ${setSize} 棵），所以上架的必须正好 ${size / setSize} 种。现在孩子怎么种都拿不到收获奖励。`,
     });
   }
 

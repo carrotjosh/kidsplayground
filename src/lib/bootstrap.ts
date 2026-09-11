@@ -1,6 +1,6 @@
 import { BallTier } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { GARDEN_SET_SIZE, GARDEN_SIZE } from "@/lib/garden";
+import { GARDEN_STAGES, gardenSetSize } from "@/lib/garden";
 
 /**
  * 新建孩子档案时预置的默认数据。
@@ -46,21 +46,31 @@ const DEFAULT_REWARDS = [
 ];
 
 /**
- * 植物**必须正好 4 种**：花园是 4×4 = 16 格，集卡规则是"每种各 GARDEN_SET_SIZE 棵"，
- * 4 × 4 = 16 正好铺满。少于 4 种孩子集齐得太轻松，多于 4 种格子装不下、永远集不齐
- * （见 lib/garden.ts 的 computeGardenProgress.achievable）。改这里前先想清楚那个约束。
+ * 植物目录。**顺序即解锁顺序**：前 gardenSide(1) = 4 种一开始就上架，
+ * 后面的随花园升级逐个自动上架（见 lib/garden.ts 的 checkGardenStageUp，
+ * 它按价格升序挑下一个未上架的品种，所以这里越靠后的必须越贵）。
+ *
+ * 为什么要预置用不上的品种：升级时要有货可解锁，没有就不升级（宁可停在当前级，
+ * 也不能升到一个永远集不齐的花园）。多这两行数据没有代价，孩子看不到未上架的品种。
  */
 const DEFAULT_PLANT_TYPES = [
   { title: "向日葵", emoji: "🌻", cost: 8 },
   { title: "坚果墙", emoji: "🥜", cost: 12 },
   { title: "豌豆射手", emoji: "🟢", cost: 18 },
   { title: "樱桃炸弹", emoji: "🍒", cost: 30 },
+  // ↓ 第 2 级（5×5）解锁
+  { title: "寒冰射手", emoji: "❄️", cost: 40 },
+  // ↓ 第 3 级（6×6）解锁
+  { title: "大嘴花", emoji: "🌺", cost: 55 },
 ];
 
-if (DEFAULT_PLANT_TYPES.length * GARDEN_SET_SIZE !== GARDEN_SIZE) {
-  // 模块加载时就炸，而不是等孩子发现花园永远集不齐。
+/** 一开始就上架几种 = 第 1 级花园需要的种类数。 */
+const INITIAL_ACTIVE_PLANT_TYPES = gardenSetSize(1);
+
+if (DEFAULT_PLANT_TYPES.length < GARDEN_STAGES.length + INITIAL_ACTIVE_PLANT_TYPES - 1) {
+  // 模块加载时就炸，而不是等孩子升到某一级才发现没有新植物可解锁。
   throw new Error(
-    `默认植物有 ${DEFAULT_PLANT_TYPES.length} 种 × 每种 ${GARDEN_SET_SIZE} 棵 ≠ 花园 ${GARDEN_SIZE} 格`
+    `默认植物只有 ${DEFAULT_PLANT_TYPES.length} 种，不够支撑 ${GARDEN_STAGES.length} 级花园`
   );
 }
 
@@ -104,13 +114,36 @@ export async function seedDefaultsForChild(childId: string) {
     // 反正没启用的主题孩子根本看不到，多这几行数据没有代价。
     plantTypeCount === 0
       ? prisma.plantType.createMany({
-          data: DEFAULT_PLANT_TYPES.map((p) => ({ ...p, childId })),
+          data: DEFAULT_PLANT_TYPES.map((p, i) => ({
+            ...p,
+            childId,
+            // 只上架第 1 级需要的那几种，其余等升级时自动解锁
+            active: i < INITIAL_ACTIVE_PLANT_TYPES,
+          })),
         })
       : null,
     ballTypeCount === 0
       ? prisma.ballType.createMany({ data: DEFAULT_BALL_TYPES.map((b) => ({ ...b, childId })) })
       : null,
   ]);
+}
+
+/**
+ * 给花园分级功能上线前建的老档案补上后面几级要用的植物品种（不上架）。
+ * 不补的话他们收获三轮之后 checkGardenStageUp 找不到可解锁的品种，会永远停在第 1 级。
+ */
+export async function ensurePlantTypes(childId: string) {
+  const existing = await prisma.plantType.findMany({
+    where: { childId },
+    select: { title: true },
+  });
+  const have = new Set(existing.map((t) => t.title));
+  const missing = DEFAULT_PLANT_TYPES.filter((p) => !have.has(p.title));
+  if (missing.length === 0 || existing.length === 0) return;
+
+  await prisma.plantType.createMany({
+    data: missing.map((p) => ({ ...p, childId, active: false })),
+  });
 }
 
 /** 给还没有精灵球目录的老孩子补上（主题功能上线前建的档案）。 */
