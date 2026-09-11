@@ -1,11 +1,18 @@
+import { KID_BADGE_HEIGHT } from "@/components/badgeHeight";
+
 /**
- * 阳光总数。和顶栏另外两个卡片（日期、等级）用同一套内边距和 h-full，
- * 三个并排时上下边缘才齐——原来这个卡片单独用了更大的 px-5 py-3，
- * 比旁边两个高出一截。
+ * 阳光总数。
+ *
+ * 高度用 KID_BADGE_HEIGHT 写死，和顶栏另外两张卡（日期、等级）完全一致。
+ * 先试过容器 items-stretch 让它们互相撑齐，但三张卡的内容行数不一样
+ * （等级卡多一条进度条、日期卡的拼音注音会顶高行框），实际看上去仍然参差。
+ * 显式等高 + 内容垂直居中最省心，也不会因为以后往某张卡里多加一行就又歪掉。
  */
 export function PointsBadge({ balance }: { balance: number }) {
   return (
-    <div className="pixel-card flex h-full items-center gap-3 bg-nes-yellow px-4 py-2 lg:gap-4 lg:px-5 lg:py-3">
+    <div
+      className={`pixel-card flex ${KID_BADGE_HEIGHT} items-center gap-3 bg-nes-yellow px-4 lg:gap-4 lg:px-5`}
+    >
       <span className="animate-coin-spin text-3xl lg:text-4xl">☀️</span>
       <div>
         <p className="pixel-font text-[9px] text-nes-black lg:text-xs">SUNLIGHT</p>

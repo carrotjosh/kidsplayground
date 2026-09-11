@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { KID_BADGE_HEIGHT } from "@/components/badgeHeight";
 import { Pinyin } from "@/components/Pinyin";
 import type { LevelProgress } from "@/lib/levelTable";
 
@@ -16,15 +17,19 @@ export function LevelBadge({ progress, href }: { progress: LevelProgress; href: 
   return (
     <Link
       href={href}
-      className="pixel-card flex h-full items-center gap-3 bg-nes-green px-4 py-2 transition hover:brightness-110 lg:gap-4 lg:px-5 lg:py-3"
+      className={`pixel-card flex ${KID_BADGE_HEIGHT} items-center gap-3 bg-nes-green px-4 transition hover:brightness-110 lg:gap-4 lg:px-5`}
     >
       <span className="text-3xl leading-none lg:text-4xl">🏅</span>
-      <div className="min-w-20 lg:min-w-28">
-        <p className="pixel-font pixel-text-outline text-lg text-white lg:text-2xl">
-          Lv.{progress.level}
-        </p>
-        <p className="kid-text text-[11px] leading-tight text-white lg:text-sm">
-          <Pinyin text={progress.title} />
+      <div className="min-w-24 lg:min-w-32">
+        {/* 级数和称号并排放一行：竖着排三行会让这张卡比另外两张高一截，
+            而顶栏的三张卡必须一样高 */}
+        <p className="flex items-baseline gap-1.5 text-white">
+          <span className="pixel-font pixel-text-outline text-lg lg:text-2xl">
+            Lv.{progress.level}
+          </span>
+          <span className="kid-text text-[11px] leading-none lg:text-sm">
+            <Pinyin text={progress.title} />
+          </span>
         </p>
         {/* 满级就不画进度条了，画一条永远满的反而像卡住了 */}
         {progress.next !== null && (
