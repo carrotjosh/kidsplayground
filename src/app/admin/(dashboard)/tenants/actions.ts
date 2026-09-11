@@ -45,11 +45,18 @@ export async function stopImpersonatingAction() {
   redirect("/admin");
 }
 
-/** 生成一个一次性邀请码。只有超管能点。 */
-export async function createInviteCodeAction() {
+/**
+ * 生成一个一次性邀请码，**并把码返回给页面**。只有超管能点。
+ *
+ * 返回值是为了让页面能立刻把整段邀请语写进剪贴板。
+ * 走 <form action> 的话拿不到返回值，所以页面那边是在 onClick 里直接 await 它——
+ * 这样剪贴板写入还处在同一次点击的手势窗口里，浏览器才肯放行。
+ */
+export async function createInviteCodeAction(): Promise<{ code: string }> {
   const session = await requireSuperAdmin();
-  await createInviteCode(session.userId);
+  const created = await createInviteCode(session.userId);
   revalidatePath("/admin/tenants");
+  return { code: created.code };
 }
 
 /** 撤销一个还没用掉的邀请码（发错人了之类）。 */
