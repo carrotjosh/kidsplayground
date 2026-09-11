@@ -16,10 +16,10 @@ export function LevelBadge({ progress, href }: { progress: LevelProgress; href: 
   return (
     <Link
       href={href}
-      className="pixel-card flex items-center gap-3 bg-nes-green px-4 py-2 transition hover:brightness-110 lg:gap-4 lg:px-5 lg:py-3"
+      className="pixel-card flex h-full items-center gap-3 bg-nes-green px-4 py-2 transition hover:brightness-110 lg:gap-4 lg:px-5 lg:py-3"
     >
       <span className="text-3xl leading-none lg:text-4xl">🏅</span>
-      <div className="min-w-24 lg:min-w-32">
+      <div className="min-w-20 lg:min-w-28">
         <p className="pixel-font pixel-text-outline text-lg text-white lg:text-2xl">
           Lv.{progress.level}
         </p>

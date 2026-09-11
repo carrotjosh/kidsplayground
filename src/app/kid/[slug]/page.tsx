@@ -74,10 +74,12 @@ export default async function KidHomePage({
         <h1 className="pixel-text-outline kid-text text-xl text-white lg:text-3xl">
           <Pinyin text={`${child.name}，你好`} />
         </h1>
-        <div className="flex items-center gap-3">
+        {/* items-stretch：三张卡片高度由最高的那张（等级，多一条进度条）撑齐，
+            不然日期和阳光会比它矮一截、上下边缘参差不齐 */}
+        <div className="flex items-stretch gap-3">
           {/* 今天几号星期几放在顶部、紧挨着阳光总数，做成同样的卡片让它醒目 */}
           <div className="pixel-card flex items-center gap-2 bg-white px-4 py-2 lg:px-5 lg:py-3">
-            <span className="text-2xl lg:text-3xl">📅</span>
+            <span className="text-3xl lg:text-4xl">📅</span>
             <p className="kid-text text-lg leading-tight text-slate-800 lg:text-2xl">
               <Pinyin text={formatDateWithWeekday(today)} />
             </p>

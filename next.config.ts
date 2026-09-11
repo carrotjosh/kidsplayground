@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
   // 直接 require 它的 CJS 入口，绕开这个不一致（只在服务端用到，不影响前端体积）。
   serverExternalPackages: ["chinese-days"],
 
+  // 关掉开发模式左下角那个圆形指示器和它的 Close 浮层。
+  // 孩子端是锁死一屏的布局，那个浮层正好压在底部导航上，
+  // 在平板上调布局时分不清"这块是被我写歪了还是被浮层挡了"。
+  // 只影响 next dev，编译和运行时报错照样会显示。
+  devIndicators: false,
+
   ...(allowedOrigins.length > 0
     ? { experimental: { serverActions: { allowedOrigins } } }
     : {}),
