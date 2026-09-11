@@ -379,9 +379,17 @@ model PokemonSpecies {
   abilities   String[] // 中文特性名
   moveName    String // 招牌技能（中文）
   movePower   Int
+
+  // 进化链。存两个 id 而不是一份展开的 JSON：
+  // 同一条链上的宝可梦共享 evolutionChainId，靠 evolvesFromId 串出先后顺序，
+  // 查"这只的完整进化路径"就是一次 where evolutionChainId = ? 的查询。
+  // 存 JSON 的话每只都要塞一份重复的链，改一处要改一串。
+  evolvesFromId    Int?
+  evolutionChainId Int?
   artUrl      String // 官方立绘，外链 PokeAPI 托管在 GitHub 上的图，仓库里不存副本
 
   @@index([rarity])
+  @@index([evolutionChainId])
 }
 
 // 精灵球等级。catchPower 越高越容易抓到；MASTER 必中。

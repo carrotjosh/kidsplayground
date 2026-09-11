@@ -312,13 +312,15 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {/* 每张卡都点得进详情页：进化路线、怕什么属性都在那儿 */}
             {deck.map(({ representative, count }) => (
-              <CreatureCard
-                key={representative.id}
-                creature={representative}
-                count={count}
-                goal={masteryGoal(representative.rarity)}
-              />
+              <Link key={representative.id} href={`/kid/${slug}/pokedex/${representative.speciesId}`}>
+                <CreatureCard
+                  creature={representative}
+                  count={count}
+                  goal={masteryGoal(representative.rarity)}
+                />
+              </Link>
             ))}
           </div>
         )}
@@ -332,7 +334,9 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           </h2>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {fled.map((c) => (
-              <CreatureCard key={c.id} creature={c} faded />
+              <Link key={c.id} href={`/kid/${slug}/pokedex/${c.speciesId}`}>
+                <CreatureCard creature={c} faded />
+              </Link>
             ))}
           </div>
         </section>

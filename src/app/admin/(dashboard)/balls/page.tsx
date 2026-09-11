@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { CaughtStatus } from "@/generated/prisma/client";
 import { getActiveChild } from "@/lib/child";
@@ -144,9 +145,10 @@ export default async function BallsAdminPage() {
             <p className="mb-2 text-sm text-slate-500">最近抓到的</p>
             <div className="flex flex-wrap gap-2">
               {owned.slice(0, 10).map((c) => (
-                <div
+                <Link
                   key={c.id}
-                  className="flex w-20 flex-col items-center border-2 border-slate-200 p-1 text-center"
+                  href={`/kid/${child.slug}/pokedex/${c.speciesId}`}
+                  className="flex w-20 flex-col items-center border-2 border-slate-200 p-1 text-center transition hover:border-nes-black"
                   title={`${c.nameZh} · ${RARITY_LABELS[c.rarity]}`}
                 >
                   <Image
@@ -160,7 +162,7 @@ export default async function BallsAdminPage() {
                     {c.isShiny && "✨"}
                     {c.nameZh}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

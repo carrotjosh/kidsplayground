@@ -40,6 +40,12 @@ async function get<T>(url: string): Promise<T> {
 }
 
 type Named = { name: string; url: string };
+
+/** PokéAPI 的资源 URL 都以 /<id>/ 结尾，取出那个数字。 */
+function idFromUrl(url: string | undefined): number | null {
+  const m = url?.match(/\/(\d+)\/?$/);
+  return m ? Number(m[1]) : null;
+}
 type LocalizedName = { name: string; language: { name: string } };
 
 /** PokéAPI 的中文有 zh-hans（简体）和 zh-hant（繁体），优先简体，都没有就退回英文。 */
@@ -109,6 +115,8 @@ async function main() {
       gender_rate: number;
       is_legendary: boolean;
       is_mythical: boolean;
+      evolves_from_species: Named | null;
+      evolution_chain: { url: string };
     }>(`${API}/pokemon-species/${id}`);
 
     const stat = (key: string) => p.stats.find((x) => x.stat.name === key)?.base_stat ?? 0;
@@ -143,6 +151,10 @@ async function main() {
       abilities,
       moveName: move.name,
       movePower: move.power,
+      // 进化链：只存两个 id，详情页靠 evolutionChainId 一次查出整条链，
+      // 再用 evolvesFromId 串出先后顺序（见 lib/evolution.ts）
+      evolvesFromId: idFromUrl(s.evolves_from_species?.url),
+      evolutionChainId: idFromUrl(s.evolution_chain.url),
       artUrl:
         p.sprites.other["official-artwork"].front_default ??
         `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`,
