@@ -128,8 +128,10 @@ function EncounterCard({
 
   // 结果回来之后以结果为准：服务端 revalidate 会把 encounter 刷成新状态，
   // 但两者到达时机不一定同步，用结果兜一下避免出现"抓到了但按钮还亮着"。
+  /** 这一次扔球有没有拿到结果（报错不算）。 */
+  const hasResult = state !== null && !("error" in state);
   const settled =
-    encounter.status !== "AVAILABLE" || (state !== null && !("error" in state) && state.outcome === "CAUGHT");
+    encounter.status !== "AVAILABLE" || (hasResult && state.outcome === "CAUGHT");
   const done = settled || encounter.attemptsLeft <= 0;
 
   return (
@@ -168,16 +170,22 @@ function EncounterCard({
         </div>
       </div>
 
+      {/*
+        这一行是**状态**（刷新页面之后还在），下面的 ThrowFeedback 是**这一次扔球的结果**。
+        刚扔完的那一刻两者都在，说的却是同一件事，屏幕上就出现
+        「抓到啦！」+「抓到了！胖丁」两条绿条。结果那条信息更多（带名字、
+        带里程碑奖励和重复返还），所以有结果时就不重复这一行。
+      */}
       {done ? (
-        <p
-          className={`pixel-border kid-text p-2 text-center text-base ${
-            encounter.status === "CAUGHT" || (state && !("error" in state) && state.outcome === "CAUGHT")
-              ? "bg-nes-green text-white"
-              : "bg-slate-200 text-slate-600"
-          }`}
-        >
-          {encounter.status === "FLED" ? labels.fled : labels.caught}
-        </p>
+        hasResult ? null : (
+          <p
+            className={`pixel-border kid-text p-2 text-center text-base ${
+              encounter.status === "CAUGHT" ? "bg-nes-green text-white" : "bg-slate-200 text-slate-600"
+            }`}
+          >
+            {encounter.status === "FLED" ? labels.fled : labels.caught}
+          </p>
+        )
       ) : (
         <>
           <p className="kid-text text-center text-sm text-slate-500">

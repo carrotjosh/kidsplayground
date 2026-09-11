@@ -17,8 +17,12 @@ const OUTLINE = "#101010";
 const SPRITES: { match: RegExp; render: () => React.ReactNode }[] = [
   { match: /向日葵|太阳花|阳光花/, render: Sunflower },
   { match: /坚果|土豆雷|墙/, render: WallNut },
-  { match: /豌豆|射手|寒冰/, render: Peashooter },
+  // 寒冰要排在"射手"前面，否则「寒冰射手」会被下面那条截胡，画出一样的绿脑袋
+  { match: /寒冰|冰冻|冰/, render: IcePeashooter },
+  { match: /豌豆|射手/, render: Peashooter },
   { match: /樱桃|炸弹|辣椒/, render: CherryBomb },
+  { match: /大嘴|食人|血盆/, render: Chomper },
+  { match: /玉米|投手|加农/, render: KernelPult },
 ];
 
 export function PlantSprite({
@@ -186,6 +190,144 @@ function Peashooter() {
       {/* 脑袋上的高光，让它看起来是个球而不是个饼 */}
       <ellipse cx="18" cy="14" rx="5.5" ry="3.4" fill="#6ed46e" transform="rotate(-25 18 14)" />
       <Eye cx={24} cy={24} r={5.2} />
+    </>
+  );
+}
+
+/**
+ * 寒冰射手：豌豆射手的冰系版本。
+ *
+ * 刻意和 Peashooter 共用同一套构图（茎的位置、脑袋大小、炮口角度全都一样），
+ * 只换配色并加两片雪花——孩子一眼就能看出"这是射手家族的另一种"，
+ * 而不是一株毫无关系的新植物。原版游戏里这两株也正是这个关系。
+ */
+function IcePeashooter() {
+  return (
+    <>
+      <Stem x={26} top={34} />
+      <path
+        d="M30 12 L53 9 Q61 22 53 35 L30 32 Z"
+        fill="#4aa8d8"
+        stroke={OUTLINE}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <ellipse cx="53" cy="22" rx="3.6" ry="8.5" fill="#1d5e80" />
+      <circle cx="25" cy="24" r="16" fill="#71c9ea" stroke={OUTLINE} strokeWidth="3" />
+      <ellipse cx="18" cy="14" rx="5.5" ry="3.4" fill="#b8e8f8" transform="rotate(-25 18 14)" />
+      {/* 两片小雪花，摆在脑袋外侧的空白处，不挡眼睛 */}
+      <Snowflake cx={11} cy={40} r={4} />
+      <Snowflake cx={45} cy={48} r={3} />
+      <Eye cx={24} cy={24} r={5.2} />
+    </>
+  );
+}
+
+/** 六角雪花：三条交叉的短线。 */
+function Snowflake({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+  return (
+    <g stroke="#dff2fb" strokeWidth="1.8" strokeLinecap="round">
+      <path d={`M${cx} ${cy - r} V${cy + r}`} />
+      <path d={`M${cx - r * 0.87} ${cy - r * 0.5} L${cx + r * 0.87} ${cy + r * 0.5}`} />
+      <path d={`M${cx - r * 0.87} ${cy + r * 0.5} L${cx + r * 0.87} ${cy - r * 0.5}`} />
+    </g>
+  );
+}
+
+/**
+ * 大嘴花：一张张开的大嘴，上下各三颗牙。
+ *
+ * 它是这一套里唯一"会咬"的植物，所以造型上刻意和前面几株拉开——
+ * 没有圆脑袋也没有炮口，主体就是那张嘴，两只小眼睛缩在上颚上方。
+ */
+function Chomper() {
+  return (
+    <>
+      <Stem x={30} top={38} />
+      {/* 下颚：一个厚实的碗 */}
+      <path
+        d="M12 34 Q32 56 52 34 Q32 44 12 34 Z"
+        fill="#8e3fb0"
+        stroke={OUTLINE}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* 嘴里先铺一层深色，牙齿才有东西衬着，不然白牙浮在半空 */}
+      <path d="M12 34 Q32 46 52 34 Q32 26 12 34 Z" fill="#4a1560" />
+      {/* 上颚向后仰，做出"张大嘴"的角度 */}
+      <path
+        d="M12 34 Q26 6 52 12 Q40 28 12 34 Z"
+        fill="#b055d8"
+        stroke={OUTLINE}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 32 l4 6 l4 -6 M30 31 l4 6 l4 -6 M40 29 l4 6 l4 -6"
+        fill="#ffffff"
+        stroke={OUTLINE}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 36 l4 -6 l4 6 M30 37 l4 -6 l4 6 M40 35 l4 -6 l4 6"
+        fill="#ffffff"
+        stroke={OUTLINE}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <Eye cx={24} cy={17} r={3.6} />
+      <Eye cx={36} cy={14} r={3.2} />
+    </>
+  );
+}
+
+/**
+ * 玉米投手：一根斜架起来的玉米棒，像门小炮。
+ *
+ * 和前面几株的区别在姿态——它是唯一"斜着"的，一眼就能从一排植物里认出来。
+ * 玉米粒用几排小圆点表示，不画得太细，缩到花园格子那么小时才不会糊成一团。
+ */
+function KernelPult() {
+  return (
+    <>
+      <Stem x={22} top={40} />
+      {/* 底座：一小截托住玉米的斜坡 */}
+      <path
+        d="M10 52 L34 52 L28 44 L14 44 Z"
+        fill="#2f9e2f"
+        stroke={OUTLINE}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* 玉米棒，向右上方 30 度架着 */}
+      <g transform="rotate(-30 32 32)">
+        <rect
+          x="18"
+          y="22"
+          width="34"
+          height="18"
+          rx="9"
+          fill="#f2c53d"
+          stroke={OUTLINE}
+          strokeWidth="3"
+        />
+        {/* 玉米粒 */}
+        {[24, 31, 38, 45].map((cx) =>
+          [28, 34].map((cy) => (
+            <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2.2" fill="#d19b1c" />
+          ))
+        )}
+        {/* 尾端的苞叶 */}
+        <path
+          d="M18 22 L8 18 L10 31 L8 44 L18 40 Z"
+          fill="#3fb63f"
+          stroke={OUTLINE}
+          strokeWidth="3"
+          strokeLinejoin="round"
+        />
+      </g>
+      <Eye cx={40} cy={20} r={3.4} />
     </>
   );
 }

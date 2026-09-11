@@ -15,6 +15,7 @@ import "dotenv/config";
 import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
+import { purgeTestTenants } from "../src/lib/testTenant";
 import { todayAsUtcDate, todayDateString } from "../src/lib/date";
 import { plantSeed } from "../src/lib/garden";
 import { ensureTodayEncounters, throwBall } from "../src/lib/pokedex";
@@ -79,6 +80,10 @@ async function createTenant(tag: string) {
 }
 
 async function main() {
+  // 同 check-economy：上次跑崩会把临时租户留在库里，开跑前先扫一遍
+  const swept = await purgeTestTenants(MARK);
+  if (swept > 0) console.log(`清理了 ${swept} 个上次残留的临时租户。`);
+
   console.log("建两个临时租户...");
   const A = await createTenant("A");
   const B = await createTenant("B");

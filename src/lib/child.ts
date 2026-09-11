@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { pinyin } from "pinyin-pro";
 
+import { KidTheme } from "@/generated/prisma/client";
+
 import {
   getSession,
   requireAnySession,
@@ -130,7 +132,7 @@ function buildSlug(name: string): string {
  * 预置默认植物不是锦上添花而是必需的：花园的集卡规则要求正好 4 个品种
  * （见 lib/bootstrap.ts），一个植物目录为空的孩子，花园是坏的。
  */
-export async function createChildForCurrentUser(name: string) {
+export async function createChildForCurrentUser(name: string, theme: KidTheme = KidTheme.GARDEN) {
   const session = await requireParentSession();
   const ownerId = effectiveUserId(session);
 
@@ -144,7 +146,7 @@ export async function createChildForCurrentUser(name: string) {
     const slug = buildSlug(trimmed);
     if (await prisma.child.findUnique({ where: { slug } })) continue;
     child = await prisma.child.create({
-      data: { name: trimmed, slug, userId: ownerId, dailyGoalPoints: DEFAULT_DAILY_GOAL },
+      data: { name: trimmed, slug, userId: ownerId, dailyGoalPoints: DEFAULT_DAILY_GOAL, theme },
     });
   }
   if (!child) throw new ActionError("生成孩子端链接失败，请重试");

@@ -4,23 +4,9 @@
 // 会把整个 Prisma 运行时拖进浏览器包（它要 node:module，直接构建失败）。
 // 类型在编译期就擦掉了，值这里用字符串字面量即可。
 import type { KidTheme } from "@/generated/prisma/client";
+import { THEME_CHOICES } from "@/lib/theme";
 
 import { setThemeAction } from "./actions";
-
-const OPTIONS: { theme: KidTheme; emoji: string; name: string; desc: string }[] = [
-  {
-    theme: "GARDEN",
-    emoji: "🌻",
-    name: "植物大战僵尸",
-    desc: "阳光买植物种进 4×4 的花园；任务没完成，当晚僵尸会吃掉一棵；每种种满 4 棵集齐一套，连本带利换回 1.5 倍阳光。",
-  },
-  {
-    theme: "POKEDEX",
-    emoji: "📕",
-    name: "宝可梦图鉴",
-    desc: "阳光买精灵球去抓宝可梦，球越好越容易遇到并抓住稀有的；任务没完成，会有一只离家出走；每集齐 8 种奖励阳光。",
-  },
-];
 
 /**
  * 一个孩子同时只跑一个主题：阳光全投在一处，经济才不会被摊薄，
@@ -34,7 +20,7 @@ export function ThemePicker({ current, childName }: { current: KidTheme; childNa
         一次只能玩一个。切换之后另一边的东西不会丢，切回来还在。
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {OPTIONS.map((opt) => {
+        {THEME_CHOICES.map((opt) => {
           const active = opt.theme === current;
           return (
             <form key={opt.theme} action={setThemeAction.bind(null, opt.theme)}>

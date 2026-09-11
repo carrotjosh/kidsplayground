@@ -1,24 +1,26 @@
 import { notFound, redirect } from "next/navigation";
 
-import { CreatureCard } from "@/components/CreatureCard";
 import { KidNavBar } from "@/components/KidNavBar";
 import { Pinyin } from "@/components/Pinyin";
+import { LevelUpBanner } from "@/components/LevelUpBanner";
 import { PointsBadge } from "@/components/PointsBadge";
 import { BallTier, CaughtStatus, KidTheme } from "@/generated/prisma/client";
 import { dateStringToUtcDate, todayDateString } from "@/lib/date";
 import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
+import { checkLevelUp } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
+import { dailyEarnRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
 import {
   catchProbability,
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
-  POKEDEX_MILESTONE_BONUS,
   POKEDEX_MILESTONE_STEP,
-  masteryGoal,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
-  REFRESH_COSTS,
+  REGIONS,
+  regionAt,
+  speciesCeilingForLevel,
   settlePokedexForChild,
 } from "@/lib/pokedex";
 
@@ -38,9 +40,22 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   // 懒结算：把欠下的"离家出走"判定补齐，返回这次新发生的事件做一次性提示
   const events = await settlePokedexForChild(child.id);
 
+  // 升级检查必须排在 ensureTodayEncounters 前面：图鉴开放到第几号是按等级算的，
+  // 放后面的话今天的名单已经按旧上限摇好了，新解锁的那批要等明天才可能出现。
+  const levelUp = await checkLevelUp(child.id);
+  const level = levelUp?.level ?? child.level;
+
   // 今天遇到谁：一天只生成一次，刷新页面不会重摇（否则一直刷就能刷出传说）
   const today = todayDateString();
   await ensureTodayEncounters(child.id, today);
+
+  // 各种奖励金额都跟着日薪走（见 lib/economy.ts），家长改了任务模板会自动跟上
+  const rate = await dailyEarnRate(child.id);
+  const milestoneBonus = pokedexMilestoneBonus(rate);
+  // 收集进度的分母只算**等级已经放出来的**那些。用全库 386 当分母的话，
+  // 刚开始玩的孩子看到的是 3/386 的进度条，等于一上来就告诉他"你永远集不完"。
+  const ceiling = speciesCeilingForLevel(level);
+  const regionName = regionAt(ceiling);
 
   const [caught, balls, balance, totalSpecies, encounters] = await Promise.all([
     prisma.caught.findMany({
@@ -52,7 +67,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       orderBy: { cost: "asc" },
     }),
     getPointsBalance(child.id),
-    prisma.pokemonSpecies.count(),
+    prisma.pokemonSpecies.count({ where: { id: { lte: ceiling } } }),
     prisma.dailyEncounter.findMany({
       where: { childId: child.id, date: dateStringToUtcDate(today) },
       orderBy: { slot: "asc" },
@@ -60,38 +75,29 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   ]);
 
   const owned = caught.filter((c) => c.status === CaughtStatus.OWNED);
-  const fled = caught.filter((c) => c.status === CaughtStatus.FLED);
   const distinctCount = new Set(owned.map((c) => c.speciesId)).size;
-  // 距离下一个里程碑还差几种
-  // 牌库按种类归组：同一种抓到几只只占一张卡，右上角标 ×N。
-  // owned 已经按 rarity desc + caughtAt desc 排过，所以每组第一只就是代表卡。
-  const deckMap = new Map<number, { representative: (typeof owned)[number]; count: number }>();
-  for (const c of owned) {
-    const hit = deckMap.get(c.speciesId);
-    if (hit) hit.count += 1;
-    else deckMap.set(c.speciesId, { representative: c, count: 1 });
-  }
   // 今天刷了几次 = 当天最大的 refreshRound（见 schema 里的注释）
   const refreshesUsed = Math.max(0, ...encounters.map((e) => e.refreshRound));
-  const nextRefreshCost = REFRESH_COSTS[Math.min(refreshesUsed, REFRESH_COSTS.length - 1)];
-
-  const deck = [...deckMap.values()];
-  // 已经攒够数量、拿过"这一种收集完成"奖励的种数
-  const masteredCount = deck.filter(
-    (d) => d.count >= masteryGoal(d.representative.rarity)
-  ).length;
+  const costs = refreshCosts(rate);
+  const nextRefreshCost = costs[Math.min(refreshesUsed, costs.length - 1)];
 
   const toNextMilestone =
-    POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP || POKEDEX_MILESTONE_STEP);
+    // 不能写成 (n % STEP || STEP)：n 是 STEP 的整数倍时那个 || 会让结果变成 0，
+    // 界面上就成了"再收集 0 种"。取模本身在整除时就返回 0，STEP - 0 = STEP 才是对的。
+    POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP);
 
   return (
-    <main className="pixel-sky-bg mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-5 md:max-w-3xl lg:max-w-5xl lg:gap-6 lg:p-8 2xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-3">
+    // 框固定一屏。上半截（进度 + 今天遇到谁）是每天都要看的，必须常驻；
+    // 牌库会长到几百张，只让它自己滚。
+    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
           <Pinyin text="我的图鉴" /> 📕
         </h1>
         <PointsBadge balance={balance} />
       </header>
+
+      {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
       {/* 任务没完成，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
       {events.length > 0 && (
@@ -107,16 +113,18 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       )}
 
       {/* 收集进度 */}
-      <section className="pixel-card flex flex-col gap-2 bg-white p-4 lg:p-5">
+      <section className="pixel-card flex shrink-0 flex-col gap-2 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
+          {/* 分母是**当前地区**的数量，不是全部 386。不写清楚"关都地区"的话，
+              看到 151 会以为一共就这么多——那正好抹掉了分批解锁想制造的期待感 */}
           <p className="kid-text text-lg text-slate-800 lg:text-xl">
-            <Pinyin text="已经收集" />{" "}
+            <Pinyin text={`${regionName}地区已经收集`} />{" "}
             <span className="text-2xl text-amber-600 lg:text-3xl">{distinctCount}</span>
             <span className="text-slate-500"> / {totalSpecies} </span>
             <Pinyin text="种" />
           </p>
           <p className="kid-text text-sm text-slate-500 lg:text-base">
-            <Pinyin text={`再收集 ${toNextMilestone} 种，奖励 ${POKEDEX_MILESTONE_BONUS} 阳光`} /> 🏅
+            <Pinyin text={`再收集 ${toNextMilestone} 种，奖励 ${milestoneBonus} 阳光`} /> 🏅
           </p>
         </div>
         <div className="h-3 w-full border-2 border-nes-black bg-slate-100">
@@ -125,6 +133,17 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             style={{ width: `${Math.min(100, (distinctCount / totalSpecies) * 100)}%` }}
           />
         </div>
+        {/* 后面还有多少没开放。不说的话孩子会以为图鉴就这些，
+            而按等级分批放出来的全部意义就在于"后面还有" */}
+        {ceiling < REGIONS[REGIONS.length - 1].ceiling && (
+          <p className="kid-text text-sm text-slate-500 lg:text-base">
+            <Pinyin
+              text={`升到 ${level + 1} 级再开放 ${speciesCeilingForLevel(level + 1) - ceiling} 只，后面一共还有 ${REGIONS[REGIONS.length - 1].ceiling - ceiling} 只没见过面`}
+            />{" "}
+            🌏
+          </p>
+        )}
+
         {/* 各稀有度收集了几只 */}
         <div className="flex flex-wrap gap-2">
           {[4, 3, 2, 1].map((r) => (
@@ -138,8 +157,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         </div>
       </section>
 
-      {/* 今天遇到的宝可梦 —— 先看到有谁，再决定用什么球 */}
-      <section className="flex flex-col gap-3">
+      {/*
+        今天遇到的宝可梦。这一块必须是**伸缩区**（min-h-0 flex-1 overflow-y-auto）：
+        牌库搬走之后这一页一个 flex-1 都没有了，所有块都是 shrink-0，
+        内容一超过一屏就被 h-dvh 的 overflow-hidden 从底部裁掉——
+        连同底部那排导航一起，孩子就再也跳不到别的页面了。
+      */}
+      <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
           <Pinyin text="今天遇到了" /> 👀
         </h2>
@@ -245,53 +269,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         )}
       </section>
 
-      {/* 牌库：按种类归组，同一种抓到多只显示 ×N。
-          代表卡挑同种里最稀有/最新的那只（owned 已经按 rarity desc, caughtAt desc 排过）。 */}
-      <section className="flex flex-col gap-3">
-        <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
-          <Pinyin text="我的牌库" /> 🗂️
-          <span className="ml-2 text-sm">
-            <Pinyin
-              text={`${distinctCount} 种 / 共 ${owned.length} 只 · 已集满 ${masteredCount} 种`}
-            />
-          </span>
-        </h2>
-        {owned.length === 0 ? (
-          <p className="pixel-card kid-text bg-white p-6 text-center text-lg text-slate-500">
-            <Pinyin text="还一只都没有，去扔个球试试" /> ⚪
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {deck.map(({ representative, count }) => (
-              <CreatureCard
-                key={representative.id}
-                creature={representative}
-                count={count}
-                goal={masteryGoal(representative.rarity)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* 跑掉的那些灰着留在下面，让孩子看得到自己失去了什么 */}
-      {fled.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="pixel-text-outline kid-text text-base text-white lg:text-lg">
-            <Pinyin text={`离家出走的（${fled.length} 只）`} /> 💨
-          </h2>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-            {fled.map((c) => (
-              <CreatureCard key={c.id} creature={c} faded />
-            ))}
-          </div>
-        </section>
-      )}
 
       <KidNavBar
+        compact
         items={[
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "⬅️", tone: "sky" },
-          { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },
+          { href: `/kid/${slug}/pokedex/deck`, label: "我的牌库", emoji: "🗂️", tone: "green" },
+          { href: `/kid/${slug}/pokedex/all`, label: "全部宝可梦", emoji: "📖", tone: "pink" },
         ]}
       />
     </main>

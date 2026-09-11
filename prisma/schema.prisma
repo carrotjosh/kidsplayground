@@ -85,6 +85,29 @@ model Child {
   // 免得一年级孩子攒了一周的阳光连着空手、直接放弃。
   catchMissStreak Int @default(0)
 
+  // 打卡等级。按**累计打卡挣到的阳光**升级，只增不减（见 lib/level.ts）。
+  // 存历史最高水位而不是每次现算：撤销打卡会让累计值往回退，现算的话孩子可能眼看着掉级，
+  // 那对一年级孩子是纯打击。
+  //
+  // 等级解锁的是**内容**：图鉴开放到第几号（SPECIES_CEILING_BY_LEVEL）、
+  // 花园长到几级和有几种植物（GARDEN_STAGE_LEVELS）。
+  // 它**不控制商品的可见性**——礼物是家长和孩子谈好的约定，藏起来像是反悔；
+  // 精灵球本来就用价格分了档（8/20/45/200），再叠一层等级是重复的闸。
+  level Int @default(1)
+
+  // 花园已经长到第几级：1 是 4×4 … 4 是 7×7（见 lib/garden.ts 的 GARDEN_STAGES）。
+  //
+  // 该到第几级是由**打卡等级**算出来的（GARDEN_STAGE_LEVELS），那为什么还要存？
+  // 因为升级不能立刻生效：孩子可能正好集齐了一整套还没收获，园子当场从 4×4 变 5×5
+  // 会让辛苦种满的一园白干。所以等级够了先记着，等花园空出来再把这一列改掉。
+  gardenStage Int @default(1)
+
+  // 现有这套价格（礼物/精灵球/植物）是按哪个"日薪"定的。
+  // 家长一改任务模板，日薪就变了，而目录里的绝对价格不会自己跟上——
+  // 存下基准值才能算出漂移了多少、一键校准该乘几倍（见 lib/economy.ts）。
+  // 默认 25 = lib/bootstrap.ts 默认任务模板的每日满分。
+  priceBaselineRate Int @default(25)
+
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
   ledgerEntries PointsLedger[]
@@ -202,6 +225,11 @@ model DailyTask {
   // 只是断开和模板的关联，不能因为删模板把孩子的打卡历史一起删掉。
   template    TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status      TaskStatus @default(PENDING)
+  // 孩子自己点"我完成了"的时间。和 completedAt 的区别很重要：
+  // completedAt 是**家长批准**的时间，家长第二天才批会让"孩子当天自觉做了"看起来像没做。
+  // 自觉性面板要衡量的是孩子的行为，所以必须单独记这一个。
+  // 家长直接对 PENDING 补打卡时这里是 null——那正好就是"当天没有自觉做"。
+  submittedAt DateTime?
   completedAt DateTime?
   createdAt   DateTime   @default(now())
 
@@ -308,8 +336,9 @@ model Plant {
   slot        Int
   status      PlantStatus @default(ALIVE)
   plantedAt   DateTime    @default(now())
-  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，是因为
-  // 夜间结算要按天判断"这天有没有种过植物"（种了就免疫僵尸），直接比日期列最省事也最不容易错。
+  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，有两个用处：
+  // 夜间结算要按天判断哪些植物是"当天刚种下"的（它们挡在最前面、先被僵尸吃），
+  // 收获时又要按它算每棵养了多少天来计息。直接比日期列最省事也最不容易错。
   plantedOnDate DateTime? @db.Date
   eatenAt     DateTime?
   eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示
@@ -351,9 +380,17 @@ model PokemonSpecies {
   abilities   String[] // 中文特性名
   moveName    String // 招牌技能（中文）
   movePower   Int
+
+  // 进化链。存两个 id 而不是一份展开的 JSON：
+  // 同一条链上的宝可梦共享 evolutionChainId，靠 evolvesFromId 串出先后顺序，
+  // 查"这只的完整进化路径"就是一次 where evolutionChainId = ? 的查询。
+  // 存 JSON 的话每只都要塞一份重复的链，改一处要改一串。
+  evolvesFromId    Int?
+  evolutionChainId Int?
   artUrl      String // 官方立绘，外链 PokeAPI 托管在 GitHub 上的图，仓库里不存副本
 
   @@index([rarity])
+  @@index([evolutionChainId])
 }
 
 // 精灵球等级。catchPower 越高越容易抓到；MASTER 必中。

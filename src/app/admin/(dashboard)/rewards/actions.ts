@@ -13,7 +13,13 @@ function revalidateRewardPaths() {
 }
 
 type ParsedReward =
-  | { ok: true; title: string; cost: number; emoji: string | null; cooldownDays: number | null }
+  | {
+      ok: true;
+      title: string;
+      cost: number;
+      emoji: string | null;
+      cooldownDays: number | null;
+    }
   | { ok: false; error: string };
 
 function parseReward(formData: FormData): ParsedReward {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DisciplinePanel } from "@/components/DisciplinePanel";
 import { MonthStatsPanel, MonthTrend } from "@/components/MonthStatsPanel";
 import { RedemptionStatus, TaskStatus } from "@/generated/prisma/client";
 import { getMonthStats, getRecentMonthsStats } from "@/lib/analytics";
@@ -7,6 +8,9 @@ import { settleMonthlyBonusForChild } from "@/lib/calendar";
 import { getPrimaryChild } from "@/lib/child";
 import { currentMonthString, formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
+import { getDisciplineStats } from "@/lib/discipline";
+import { levelProgress, totalEarned } from "@/lib/level";
+import { THEME_META } from "@/lib/theme";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
@@ -18,19 +22,24 @@ export default async function AdminDashboardPage() {
   // 顺手结算月度满勤奖（幂等，重复调用不会重复发）。
   await settleMonthlyBonusForChild(child);
 
-  const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend] = await Promise.all([
-    getOrCreateTodayTasks(child.id),
-    getPointsBalance(child.id),
-    prisma.redemption.count({
-      where: { childId: child.id, status: RedemptionStatus.REQUESTED },
-    }),
-    prisma.dailyTask.findMany({
-      where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-    }),
-    getMonthStats(child.id, currentMonthString()),
-    getRecentMonthsStats(child.id, 6),
-  ]);
+  const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend, discipline, earned] =
+    await Promise.all([
+      getOrCreateTodayTasks(child.id),
+      getPointsBalance(child.id),
+      prisma.redemption.count({
+        where: { childId: child.id, status: RedemptionStatus.REQUESTED },
+      }),
+      prisma.dailyTask.findMany({
+        where: { childId: child.id, status: TaskStatus.PENDING_REVIEW },
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      }),
+      getMonthStats(child.id, currentMonthString()),
+      getRecentMonthsStats(child.id, 6),
+      getDisciplineStats(child.id, child.dailyGoalPoints),
+      totalEarned(child.id),
+    ]);
+  const progress = levelProgress(child.level, earned);
+  const themeMeta = THEME_META[child.theme];
 
   const doneCount = tasks.filter((t) => t.status === "DONE").length;
 
@@ -38,7 +47,7 @@ export default async function AdminDashboardPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">{child.name} 的仪表盘</h1>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="pixel-card bg-white p-5">
           <p className="text-sm text-slate-500">今日任务完成</p>
           <p className="text-3xl font-bold">
@@ -49,6 +58,21 @@ export default async function AdminDashboardPage() {
           <p className="text-sm text-slate-500">当前阳光</p>
           <p className="text-3xl font-bold">{balance}</p>
         </div>
+        {/* 等级是孩子最在意的那个数字，家长得能一眼看到，才聊得起来 */}
+        <Link
+          href={themeMeta.adminPath}
+          className="pixel-card bg-white p-5 transition hover:bg-amber-50"
+        >
+          <p className="text-sm text-slate-500">打卡等级 · {progress.title}</p>
+          <p className="text-3xl font-bold">
+            Lv.{progress.level}
+            <span className="ml-2 text-sm font-normal text-slate-400">
+              {progress.next === null
+                ? "已满级"
+                : `再挣 ${progress.remaining} 升级`}
+            </span>
+          </p>
+        </Link>
         <Link
           href="/admin/redemptions"
           className="pixel-card bg-white p-5 transition hover:bg-amber-50"
@@ -91,6 +115,7 @@ export default async function AdminDashboardPage() {
 
       {/* 数据分析：本月达标率 + 阳光收支构成，再加最近半年的趋势。
           日历本身在"打卡记录"页，这里只放看趋势用的统计。 */}
+      <DisciplinePanel stats={discipline} />
       <MonthStatsPanel stats={stats} />
       <MonthTrend months={trend} />
 

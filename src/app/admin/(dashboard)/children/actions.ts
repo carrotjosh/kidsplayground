@@ -27,8 +27,13 @@ export async function createChildAction(
 ): Promise<string | null> {
   await requireParentSession();
 
+  // 表单来的值不可信，只认枚举里真实存在的那两个；认不出来就退回默认主题，
+  // 不要因为有人改了 radio 的 value 就让建档失败。
+  const raw = String(formData.get("theme") ?? "");
+  const theme = raw in KidTheme ? (raw as KidTheme) : KidTheme.GARDEN;
+
   try {
-    await createChildForCurrentUser(String(formData.get("name") ?? ""));
+    await createChildForCurrentUser(String(formData.get("name") ?? ""), theme);
   } catch (error) {
     if (error instanceof ActionError) return error.message;
     throw error;

@@ -95,6 +95,7 @@ export function RewardFields({ initial }: { initial?: RewardFieldValues }) {
           从上次兑换那一刻开始倒计时。比如「每月一次」= 换过之后 30 天内不能再换。
         </p>
       </div>
+
     </>
   );
 }

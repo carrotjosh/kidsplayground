@@ -7,6 +7,13 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  dailyEarnRate,
+  duplicateRefund,
+  pokedexMilestoneBonus,
+  refreshCosts,
+  speciesMasteryBonus,
+} from "@/lib/economy";
+import {
   addDays,
   dateStringToUtcDate,
   formatStoredDate,
@@ -60,7 +67,7 @@ const ENCOUNTER_WEIGHTS: Record<number, number> = { 1: 55, 2: 30, 3: 13, 4: 2 };
  * 现在 3 个普通球（24 阳光）大致是：普通 95% / 少见 68% / 稀有 39% / 传说 14%。
  * 手感是"普通的基本能拿下、少见的常有遗憾、稀有的要碰运气、传说的得靠大师球"。
  */
-const BASE_CATCH_RATE: Record<number, number> = { 1: 0.5, 2: 0.25, 3: 0.12, 4: 0.04 };
+export const BASE_CATCH_RATE: Record<number, number> = { 1: 0.5, 2: 0.25, 3: 0.12, 4: 0.04 };
 
 /**
  * 保底：每失败一次，下一次的成功率 +25%；连续失败到这个次数就必中。
@@ -92,8 +99,9 @@ const SHINY_RATE = 1 / 64;
  *
  * 数值刻意压在球价（最便宜 8 阳光）之下，保证扔球**永远不可能是赚钱手段**：
  * 最划算的情况是普通球打稀有重复，期望 0.12 × 20 = 2.4 阳光，远低于 8 的成本。
+ * 球价是家长可改的，所以这条不变量在 lib/economyAudit.ts 里有实时校验，不只靠这里的数值。
  */
-const DUPLICATE_REFUND: Record<number, number> = { 1: 3, 2: 8, 3: 20, 4: 60 };
+/* 具体数值改成按日薪算了，见 lib/economy.ts 的 duplicateRefund（日薪 25 时正好还是 3/8/20/60）。 */
 
 /**
  * 生成遇怪时，优先挑"还没抓到过"的那一种的概率。
@@ -101,7 +109,7 @@ const DUPLICATE_REFUND: Record<number, number> = { 1: 3, 2: 8, 3: 20, 4: 60 };
  * 只加在同一稀有度档**内部**：先按 ENCOUNTER_WEIGHTS 摇档次（保证稀有度分布不变），
  * 再在档内偏向没见过的。模拟下来前三个月的重复率从 37%/52% 降到 21%/33%，
  * 新手期的新鲜感明显好转；中后期反而略高，因为收集得更快、剩的更少——
- * 那一段由 DUPLICATE_REFUND 兜着。
+ * 那一段由重复返还（economy.ts 的 duplicateRefund）兜着。
  *
  * 不设成 1：留一点重复才符合"可以重复抓同一种"的设定，孩子也会有再遇到心头好的惊喜。
  */
@@ -117,8 +125,7 @@ const UNSEEN_BIAS = 0.5;
  */
 const SPECIES_MASTERY_GOAL: Record<number, number> = { 1: 5, 2: 4, 3: 3, 4: 2 };
 
-/** 完成一种的奖励，跟难度走。 */
-const SPECIES_MASTERY_BONUS: Record<number, number> = { 1: 40, 2: 80, 3: 150, 4: 500 };
+/* 完成一种的奖励跟难度走，具体数值见 lib/economy.ts 的 speciesMasteryBonus。 */
 
 /** 某个稀有度要攒几只才算收集完成，给页面显示进度用。 */
 export function masteryGoal(rarity: number): number {
@@ -131,20 +138,54 @@ export function masteryGoal(rarity: number): number {
  * 为什么要有：每天只出 2 只，运气差的时候两只都是已经集满的普通货，
  * 孩子当天除了干等没别的事可做——有偿刷新给了他一个"主动改变局面"的选项。
  *
- * 为什么递增（5 → 12 → 25）：平价的话孩子会无脑连刷到出稀有的，
+ * 为什么递增（日薪 25 时是 5 → 13 → 25）：平价的话孩子会无脑连刷到出稀有的，
  * 抓宝就退化成了刷新。第一次比一个精灵球（8）还便宜，愿意试；
  * 第三次 25 阳光正好是一整天的收入，得真的想清楚。三次全刷 42 阳光，要动用存款。
  *
  * 不怕被拿来刷传说：3 次刷新多摇 6 次遇怪，撞上传说的概率从 4% 提到约 11%，
  * 但抓传说还得再掏 200 的大师球，整体算下来一点都不便宜。
  */
-export const REFRESH_COSTS = [5, 12, 25];
-export const MAX_REFRESHES_PER_DAY = REFRESH_COSTS.length;
+export const MAX_REFRESHES_PER_DAY = 3;
 
-/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。 */
+/**
+ * 图鉴按**打卡等级**开放到第几号。
+ *
+ * 从"收集到当前地区的 80% 就开下一个"改成挂在等级上，原因是那个触发条件
+ * 奖励的是**在游戏里刷**（多买球多抓），而不是**打卡**。内容是这套系统里最硬的
+ * 激励，它应该由"干了多少活"决定——等级正是那个量（见 lib/level.ts）。
+ * 顺带三条独立的进度线（等级 / 图鉴收集率 / 花园收获轮数）合并成了一条。
+ *
+ * **下限必须 ≥151**：第一只传说宝可梦是 #144（急冻鸟），上限低于它的话
+ * 传说那一档一只都没有，摇到传说时会退回随机挑一只普通的——稀有度体系静默失效。
+ * 所以第 1 级直接给满关都，往后每级放出约 17 只。
+ *
+ * 三个地区边界落在 Lv.1 / Lv.7 / Lv.15，中间每一级也都有新面孔，
+ * 这样"等级之路"上每一行都有内容，而不是只有三行有。
+ */
+export const SPECIES_CEILING_BY_LEVEL = [
+  151, 170, 188, 205, 222, 238, 251, 268, 285, 302, 318, 334, 350, 368, 386,
+] as const;
+
+/** 地区名和它的编号上界，用来在界面上标"这一批属于哪个地区"。 */
+export const REGIONS = [
+  { name: "关都", ceiling: 151 },
+  { name: "城都", ceiling: 251 },
+  { name: "丰缘", ceiling: 386 },
+] as const;
+
+/** 第 level 级能遇到的最大图鉴编号。越界一律夹到合法范围。 */
+export function speciesCeilingForLevel(level: number): number {
+  const i = Math.min(Math.max(level, 1), SPECIES_CEILING_BY_LEVEL.length) - 1;
+  return SPECIES_CEILING_BY_LEVEL[i];
+}
+
+/** 这个编号上界落在哪个地区里（用来显示"关都地区已经收集…"）。 */
+export function regionAt(ceiling: number): string {
+  return (REGIONS.find((r) => ceiling <= r.ceiling) ?? REGIONS[REGIONS.length - 1]).name;
+}
+
+/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus（4 天工资）。 */
 export const POKEDEX_MILESTONE_STEP = 8;
-/** 约等于 4 天的收入（日收入 25）。太小的话集卡这条线撑不起长期目标。 */
-export const POKEDEX_MILESTONE_BONUS = 100;
 
 /**
  * 扔球的结果。文案在这里就用 annotate() **在服务端**标好拼音再返回。
@@ -241,6 +282,15 @@ async function createEncounters(
 ) {
   if (count <= 0) return;
   const date = dateStringToUtcDate(dateString);
+
+  // 只从等级已经放出来的那一段里挑（见 SPECIES_CEILING_BY_LEVEL）。
+  // 上限一路传进 findMany 的 where，而不是查完再 filter——不然会白查几百行。
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { level: true },
+  });
+  const ceiling = speciesCeilingForLevel(child?.level ?? 1);
+
   const ownedSpeciesIds = new Set(
     (
       await prisma.caught.findMany({
@@ -254,9 +304,14 @@ async function createEncounters(
   const rows = [];
   for (let slot = startSlot; slot < startSlot + count; slot++) {
     const rarity = rollRarity();
-    const pool = await prisma.pokemonSpecies.findMany({ where: { rarity } });
-    // 理论上四档都有货（63/39/43/6），真空了退回全库，别让孩子看到空名单
-    const candidates = pool.length > 0 ? pool : await prisma.pokemonSpecies.findMany();
+    const pool = await prisma.pokemonSpecies.findMany({
+      where: { rarity, id: { lte: ceiling } },
+    });
+    // 理论上四档都有货（关都是 63/39/43/6），真空了退回本地区全部，别让孩子看到空名单
+    const candidates =
+      pool.length > 0
+        ? pool
+        : await prisma.pokemonSpecies.findMany({ where: { id: { lte: ceiling } } });
     if (candidates.length === 0) {
       throw new ActionError("图鉴还没准备好，请家长先导入宝可梦数据");
     }
@@ -298,6 +353,8 @@ async function createEncounters(
  * 次数和价格都在事务里按当天最大的 refreshRound 重算，不采信页面传来的东西。
  */
 export async function refreshEncounters(childId: string, dateString: string) {
+  // 日薪要查任务模板，放在事务外先算好——事务里只做扣费和改遇怪，别把锁的持有时间拉长。
+  const costs = refreshCosts(await dailyEarnRate(childId));
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
     const date = dateStringToUtcDate(dateString);
@@ -307,7 +364,7 @@ export async function refreshEncounters(childId: string, dateString: string) {
     if (usedRounds >= MAX_REFRESHES_PER_DAY) {
       throw new ActionError("今天的刷新次数用完啦，明天再来");
     }
-    const cost = REFRESH_COSTS[usedRounds];
+    const cost = costs[usedRounds];
 
     const balance = await tx.pointsLedger.aggregate({ where: { childId }, _sum: { amount: true } });
     if ((balance._sum.amount ?? 0) < cost) throw new ActionError("阳光还不够哦");
@@ -349,6 +406,11 @@ export async function throwBall(
   ballTypeId: string,
   childId: string
 ): Promise<ThrowResult> {
+  // 各种奖励金额都按日薪算（见 lib/economy.ts）。算日薪要查任务模板，
+  // 放事务外先算好，别让这次查询占着 Child 的行锁。
+  const rate = await dailyEarnRate(childId);
+  const milestoneBonus = pokedexMilestoneBonus(rate);
+
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
 
@@ -493,19 +555,19 @@ export async function throwBall(
         await tx.pointsLedger.create({
           data: {
             childId,
-            amount: POKEDEX_MILESTONE_BONUS,
+            amount: milestoneBonus,
             reason: `${marker}，收集奖励`,
             type: LedgerType.POKEDEX_BONUS,
           },
         });
-        newMilestone = { total, bonus: POKEDEX_MILESTONE_BONUS };
+        newMilestone = { total, bonus: milestoneBonus };
       }
     }
 
-    // 重复的按稀有度返还一点阳光，让每一次成功都值点什么（见 DUPLICATE_REFUND）
+    // 重复的按稀有度返还一点阳光，让每一次成功都值点什么（见 economy.ts 的 duplicateRefund）
     let refund = 0;
     if (alreadyOwned) {
-      refund = DUPLICATE_REFUND[species.rarity] ?? 0;
+      refund = duplicateRefund(rate, species.rarity);
       if (refund > 0) {
         await tx.pointsLedger.create({
           data: {
@@ -531,7 +593,7 @@ export async function throwBall(
         where: { childId, type: LedgerType.POKEDEX_BONUS, reason: { startsWith: marker } },
       });
       if (!already) {
-        const bonus = SPECIES_MASTERY_BONUS[species.rarity] ?? 40;
+        const bonus = speciesMasteryBonus(rate, species.rarity);
         await tx.pointsLedger.create({
           data: {
             childId,

@@ -1,0 +1,105 @@
+import { LedgerType } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { LEVELS, levelForEarned, levelTitle } from "@/lib/levelTable";
+
+/**
+ * 打卡等级。
+ *
+ * 解决的是礼物商店**零进度感**这个问题：图鉴有分地区解锁、花园有分级，
+ * 唯一真正花家长钱的礼物商店却第一天就全开——新孩子一上来就看到「迪士尼 2500」，
+ * 那不是目标，是噪音。等级把大愿望往后藏，等孩子真的攒够了资历再露面，
+ * 顺带也把家长的现金支出天然往后推。
+ *
+ * 等级表和纯计算在 lib/levelTable.ts（客户端组件也要用），这里只放读库的部分。
+ */
+
+// 转出一份，服务端代码从这一个入口取就行
+export * from "@/lib/levelTable";
+
+/**
+ * 只算**打卡挣来的**阳光：完成任务 + 月度满勤奖，减去撤销打卡扣回的。
+ *
+ * 刻意排除的三类，每一类都有理由：
+ * - **花园收获 / 图鉴奖励**：那是玩法内部的循环，不代表多干了活。算进去的话，
+ *   花园孩子刷一轮就升级、图鉴孩子净吞 56% 反而升得慢，同一张等级表对两个主题就不公平了。
+ * - **家长手动加分**：那是家长给的，不是孩子挣的。真要奖励额外的付出，
+ *   应该用「临时任务」——那条路会产生 TASK_COMPLETE，自然计入。
+ *
+ * 换句话说这个数字回答的是"他到底干了多少活"，不是"多少阳光从他手里过了一遍"。
+ */
+const COUNTED: LedgerType[] = [LedgerType.TASK_COMPLETE, LedgerType.MONTHLY_BONUS];
+
+/** 累计打卡挣到的阳光（毛收入 − 撤销）。 */
+export async function totalEarned(childId: string): Promise<number> {
+  const [gross, revoked] = await Promise.all([
+    prisma.pointsLedger.aggregate({
+      where: { childId, type: { in: COUNTED } },
+      _sum: { amount: true },
+    }),
+    prisma.pointsLedger.aggregate({
+      where: { childId, type: LedgerType.TASK_REVOKE },
+      _sum: { amount: true },
+    }),
+  ]);
+  // 撤销那条流水本身是负数，直接相加就是净额
+  return Math.max(0, (gross._sum.amount ?? 0) + (revoked._sum.amount ?? 0));
+}
+
+/**
+ * 够条件就升级，返回这次新升到的级数（没升就返回 null）。
+ *
+ * **只增不减**：算出来比存着的低（撤销打卡把累计值拉回了阈值下）时什么都不做。
+ * 掉级对一年级孩子是纯打击，而且"我明明做过那些事"这件事本身也没变。
+ *
+ * 和图鉴的 checkRegionUnlock、花园的 checkGardenStageUp 同构，
+ * 包括调用时机——要在页面渲染之前调，否则新解锁的礼物这一次看不到。
+ */
+export async function checkLevelUp(
+  childId: string
+): Promise<{ level: number; title: string } | null> {
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { level: true },
+  });
+  if (!child) return null;
+
+  const target = levelForEarned(await totalEarned(childId));
+  if (target <= child.level) return null;
+
+  // 带上原级数做条件：两个请求同时触发时只有一个能改到
+  const updated = await prisma.child.updateMany({
+    where: { id: childId, level: child.level },
+    data: { level: target },
+  });
+  if (updated.count === 0) return null;
+
+  return { level: target, title: levelTitle(target) };
+}
+
+/**
+ * 等级之路：每一级要多少累计阳光、叫什么。
+ *
+ * 为什么要有这一页：等级如果只在角落里显示一个数字，孩子看不出它通向哪儿。
+ * 摊开全部 15 级，他就知道自己在整条路的什么位置、尽头长什么样。
+ *
+ * 这里**没有"解锁什么"这一列**。加过两轮都撤回了：礼物是家长和孩子谈好的约定、
+ * 藏起来像是反悔；精灵球本来就用价格分了档（8/20/45/200），再叠一层等级是重复的闸。
+ * 等级现在是纯粹的称号系统——每升一级换一个头衔，就是它全部的奖励。
+ */
+export type LevelRoadmapEntry = {
+  level: number;
+  title: string;
+  need: number;
+  reached: boolean;
+  current: boolean;
+};
+
+export function getLevelRoadmap(level: number): LevelRoadmapEntry[] {
+  return LEVELS.map((lv, i) => ({
+    level: i + 1,
+    title: lv.title,
+    need: lv.need,
+    reached: i + 1 <= level,
+    current: i + 1 === level,
+  }));
+}

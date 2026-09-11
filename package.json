@@ -14,6 +14,8 @@
     "start:lan": "next start -H 0.0.0.0",
     "check:pinyin": "tsx scripts/check-pinyin.ts",
     "check:isolation": "tsx scripts/check-isolation.ts",
+    "check:economy": "tsx scripts/check-economy.ts",
+    "check:layout": "tsx scripts/check-kid-layout.ts",
     "db:seed-pokedex": "tsx scripts/seed-pokedex.ts"
   },
   "dependencies": {

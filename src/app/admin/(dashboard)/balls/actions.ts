@@ -16,7 +16,7 @@ function revalidateBallPaths() {
   revalidatePath("/admin");
 }
 
-export async function updateBallCostAction(
+export async function updateBallAction(
   ballTypeId: string,
   _prevState: string | null,
   formData: FormData
@@ -25,7 +25,6 @@ export async function updateBallCostAction(
 
   const cost = Number(formData.get("cost"));
   if (!Number.isFinite(cost) || cost <= 0) return "请填写大于 0 的阳光价格";
-
   const child = await getPrimaryChild();
   const result = await prisma.ballType.updateMany({
     where: { id: ballTypeId, childId: child.id },

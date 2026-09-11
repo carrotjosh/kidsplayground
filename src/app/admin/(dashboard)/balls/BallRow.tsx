@@ -5,37 +5,47 @@ import { useActionState } from "react";
 import { BallSprite } from "@/components/BallSprite";
 import type { BallTier } from "@/generated/prisma/client";
 
-import { toggleBallActiveAction, updateBallCostAction } from "./actions";
+import { toggleBallActiveAction, updateBallAction } from "./actions";
 
 export function BallRow({
   ball,
   caughtCount,
 }: {
-  ball: { id: string; tier: BallTier; title: string; cost: number; catchPower: number; active: boolean };
+  ball: {
+    id: string;
+    tier: BallTier;
+    title: string;
+    cost: number;
+    catchPower: number;
+    active: boolean;
+  };
   caughtCount: number;
 }) {
   const [error, formAction, isPending] = useActionState(
-    updateBallCostAction.bind(null, ball.id),
+    updateBallAction.bind(null, ball.id),
     null
   );
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 pixel-card bg-white p-4">
-      <div className="flex min-w-0 items-center gap-3">
+    // 骨架和礼物/植物那两行一致：信息区 min-w-0 可收缩、控件区 shrink-0 永不换行。
+    // 原来外层是 flex-wrap 而信息区没有 min-w-0，于是大师球那行（描述最长，多了"（必中）"）
+    // 会把整组控件顶到第二行，四行长得不一样。
+    <div className="flex items-center justify-between gap-3 pixel-card bg-white p-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <BallSprite tier={ball.tier} className="h-10 w-10 shrink-0" />
         <div className="min-w-0">
           <p className="font-semibold">
             {ball.title}
             {!ball.active && <span className="ml-2 text-xs text-slate-400">已下架</span>}
           </p>
-          <p className="text-sm text-slate-500">
+          <p className="truncate text-sm text-slate-500">
             抓取倍率 ×{ball.catchPower}
             {ball.tier === "MASTER" && "（必中）"} · 用它抓到过 {caughtCount} 只
           </p>
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <form action={formAction} className="flex items-center gap-2">
           <input
             name="cost"
@@ -44,13 +54,13 @@ export function BallRow({
             defaultValue={ball.cost}
             className="w-24 rounded-none border-2 border-nes-black px-2 py-1"
           />
-          <span className="text-sm text-slate-500">阳光</span>
+          <span className="shrink-0 text-sm text-slate-500">阳光</span>
           <button
             type="submit"
             disabled={isPending}
             className="pixel-btn bg-white px-3 py-1 text-sm text-slate-700 disabled:opacity-50"
           >
-            {isPending ? "…" : "改价"}
+            {isPending ? "…" : "保存"}
           </button>
         </form>
 

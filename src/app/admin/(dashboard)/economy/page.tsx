@@ -1,0 +1,203 @@
+import { getActiveChild } from "@/lib/child";
+import { auditEconomy, recalibrationPreview } from "@/lib/economyAudit";
+import { KidTheme } from "@/generated/prisma/client";
+import { RARITY_LABELS } from "@/lib/rarity";
+
+import { acceptCurrentPricesAction, recalibrateAction } from "./actions";
+import { PriceCell } from "./PriceCell";
+import { RecalibrateForm } from "./RecalibrateForm";
+
+export const dynamic = "force-dynamic";
+
+const STATUS_STYLE = {
+  ok: "text-slate-500",
+  low: "text-amber-600",
+  high: "text-nes-red",
+} as const;
+
+const STATUS_LABEL = { ok: "", low: "偏便宜", high: "偏贵" } as const;
+
+export default async function EconomyAdminPage() {
+  const child = await getActiveChild();
+  const [audit, preview] = await Promise.all([
+    auditEconomy(child.id),
+    recalibrationPreview(child.id),
+  ]);
+
+  const errors = audit.findings.filter((f) => f.level === "error");
+  const warns = audit.findings.filter((f) => f.level === "warn");
+  const hasDrift = preview.rows.length > 0 && Math.abs(preview.factor - 1) >= 0.01;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-bold">经济体检</h1>
+
+      <p className="pixel-card bg-amber-50 p-4 text-sm text-slate-600">
+        这一页把每个价格换算成「孩子要干几天」，好让你看出定价还合不合适。
+        <br />
+        <b>日薪变了不等于价格就错了。</b>阳光和任务难度是挂钩的，所以「200 阳光」永远代表
+        同样多的工作量——加一门课只是让他赚得更快，每份奖励背后的付出没变。
+        要不要跟着改价，取决于你想保持「同样的付出换同样的东西」还是「同样的时间换同样的东西」。
+        <br />
+        <b>系统自动发的那些数额（满勤奖、刷新费、里程碑、重复返还）不用管</b>，
+        它们已经改成按日薪算了，改任务会自动跟上。
+      </p>
+
+      {/* ---- 日薪 ---- */}
+      <div className="pixel-card flex flex-wrap items-center justify-between gap-4 bg-white p-5">
+        <div>
+          <p className="text-sm text-slate-500">当前日薪（未来 28 天平均）</p>
+          <p className="text-3xl font-bold">
+            {audit.rate} <span className="text-base font-normal text-slate-500">阳光 / 天</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            现有价格是按日薪 {audit.baseline} 定的
+            {hasDrift && (
+              <>
+                {" · "}
+                <b className={audit.drift > 1 ? "text-nes-red" : "text-amber-600"}>
+                  已漂移 {audit.drift > 1 ? "+" : ""}
+                  {Math.round((audit.drift - 1) * 100)}%
+                </b>
+              </>
+            )}
+          </p>
+        </div>
+        {hasDrift && (
+          <form action={acceptCurrentPricesAction}>
+            <button type="submit" className="pixel-btn bg-white px-3 py-2 text-sm text-slate-700">
+              不改价（付出不变）
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* ---- 问题 ---- */}
+      {(errors.length > 0 || warns.length > 0) && (
+        <div className="flex flex-col gap-2">
+          {[...errors, ...warns].map((f, i) => (
+            <div
+              key={i}
+              className={`pixel-card p-4 text-sm ${
+                f.level === "error" ? "bg-red-50 text-nes-red" : "bg-amber-50 text-amber-800"
+              }`}
+            >
+              <p className="font-bold">
+                {f.level === "error" ? "❌ " : "⚠️ "}
+                {f.title}
+              </p>
+              <p className="mt-1 text-slate-600">{f.detail}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {errors.length === 0 && warns.length === 0 && (
+        <p className="pixel-card bg-green-50 p-4 text-sm text-green-800">✅ 没有发现问题。</p>
+      )}
+
+      {/* ---- 校准 ---- */}
+      {hasDrift && (
+        <div className="pixel-card flex flex-col gap-3 bg-white p-5">
+          <h2 className="font-semibold">跟着日薪改价（时间不变）</h2>
+          <p className="text-sm text-slate-500">
+            让大礼物仍然是「攒差不多那么多天」。也不一定要一次调到位——一次涨三成对孩子是个
+            不小的打击，分两三次慢慢来更容易接受。只调一部分的话，基准值会记成「调到哪儿了」，
+            这一页会继续如实显示还剩多少没调。
+          </p>
+          <RecalibrateForm
+            action={recalibrateAction}
+            rows={preview.rows.map((r) => ({ kind: r.kind, label: r.label, from: r.from }))}
+            fullPercent={Math.round((preview.factor - 1) * 100)}
+          />
+        </div>
+      )}
+
+      {/* ---- 逐项折算 ---- */}
+      <p className="text-sm text-slate-500">
+        下面每一行都能直接改价。<b>「调到 N」</b>= 把它挪到<b>刚好进入</b>设计区间
+        （取最近的那条边界，不是区间中点——很多项只是差一点点越界，按中点会直接翻倍）。
+        想按自己的判断改，就在输入框里填一个数再点保存。
+      </p>
+
+      {audit.groups.map((group) => (
+        <div key={group.title} className="pixel-card flex flex-col gap-2 bg-white p-5">
+          <h2 className="font-semibold">{group.title}</h2>
+          {/* 四列中文在 375px 的手机上放不下，套一层横向滚动而不是让它把整页撑宽 */}
+          <div className="-mx-1 overflow-x-auto px-1">
+            {/* table-fixed + colgroup：不定列宽的话每张表的列会各自随内容伸缩，
+                四组表格上下叠在一起就完全对不齐 */}
+            <table className="w-full min-w-[34rem] table-fixed text-sm">
+              <colgroup>
+                <col />
+                <col className="w-28" />
+                <col className="w-24" />
+                <col className="w-[15.5rem]" />
+              </colgroup>
+              <thead className="text-left text-xs text-slate-400">
+                <tr>
+                  <th className="py-1 font-normal">项目</th>
+                  <th className="py-1 text-right font-normal">折合</th>
+                  <th className="py-1 text-right font-normal">设计区间</th>
+                  <th className="py-1 pl-2 font-normal">改价</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.items.map((item) => (
+                  <tr key={`${item.kind}-${item.id}`} className="border-t border-slate-100">
+                    <td className="truncate py-1.5 pr-2" title={item.label}>
+                      {item.label}
+                    </td>
+                    <td className={`py-1.5 text-right tabular-nums ${STATUS_STYLE[item.status]}`}>
+                      {item.days.toFixed(1)} 天 {STATUS_LABEL[item.status]}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right text-xs text-slate-400 tabular-nums">
+                      {item.band ? `${item.band.min}–${item.band.max} 天` : "—"}
+                    </td>
+                    {/* 价格那一列直接做成可编辑的：家长是在这一页发现问题的，
+                        让他翻到礼物页/精灵球页/植物页各改一遍太绕 */}
+                    <td className="py-1.5 pl-2">
+                      <PriceCell
+                        kind={item.kind}
+                        id={item.id}
+                        cost={item.cost}
+                        suggested={item.suggested}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+
+      {/* ---- 自动跟随的数额 ---- */}
+      <div className="pixel-card flex flex-col gap-2 bg-slate-50 p-5">
+        <h2 className="font-semibold">系统自动发的（跟着日薪走，无需维护）</h2>
+        <ul className="text-sm text-slate-600">
+          <li>月度满勤奖：{audit.derived.monthlyBonus} 阳光（6 天工资）</li>
+          {child.theme === KidTheme.POKEDEX && (
+            <>
+              <li>刷新今日遇怪：{audit.derived.refresh.join(" / ")} 阳光（递增，每天最多 3 次）</li>
+              <li>每集齐 8 种：{audit.derived.milestone} 阳光</li>
+              <li>
+                单种收集完成：
+                {[1, 2, 3, 4]
+                  .map((r) => `${RARITY_LABELS[r]} ${audit.derived.mastery[r]}`)
+                  .join(" / ")}{" "}
+                阳光
+              </li>
+              <li>
+                抓到重复的返还：
+                {[1, 2, 3, 4]
+                  .map((r) => `${RARITY_LABELS[r]} ${audit.derived.duplicate[r]}`)
+                  .join(" / ")}{" "}
+                阳光
+              </li>
+            </>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}

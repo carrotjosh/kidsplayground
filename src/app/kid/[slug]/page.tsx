@@ -6,6 +6,8 @@ import { KidNavBar } from "@/components/KidNavBar";
 import { collectionNavItem } from "@/lib/theme";
 import { MonthCalendar, MonthNav } from "@/components/MonthCalendar";
 import { Pinyin } from "@/components/Pinyin";
+import { LevelBadge } from "@/components/LevelBadge";
+import { LevelUpBanner } from "@/components/LevelUpBanner";
 import { PointsBadge } from "@/components/PointsBadge";
 import { CompactTaskCard } from "@/components/TaskCard";
 import { getMonthSummary, settleMonthlyBonusForChild } from "@/lib/calendar";
@@ -16,6 +18,7 @@ import {
   isValidMonthString,
   todayDateString,
 } from "@/lib/date";
+import { checkLevelUp, levelProgress, totalEarned } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
@@ -51,11 +54,16 @@ export default async function KidHomePage({
 
   await settleMonthlyBonusForChild(child);
 
-  const [tasks, balance, summary] = await Promise.all([
+  // 满勤奖算进等级，所以要排在结算之后
+  const levelUp = await checkLevelUp(child.id);
+
+  const [tasks, balance, summary, earned] = await Promise.all([
     getOrCreateTodayTasks(child.id),
     getPointsBalance(child.id),
     getMonthSummary(child, month),
+    totalEarned(child.id),
   ]);
+  const progress = levelProgress(levelUp?.level ?? child.level, earned);
   const today = todayDateString();
 
   return (
@@ -74,9 +82,13 @@ export default async function KidHomePage({
               <Pinyin text={formatDateWithWeekday(today)} />
             </p>
           </div>
+          <LevelBadge progress={progress} href={`/kid/${slug}/level`} />
           <PointsBadge balance={balance} />
         </div>
       </header>
+
+      {/* 升级横幅。首页是锁死一屏的布局，中间那块是 flex-1，会自动让出这几十像素 */}
+      {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
       {/* 中间区域左右分栏：左边今天要做的事（一列等大卡片），右边打卡日历（撑满剩余高度）。
           两栏的标题行都用 h-11/h-12 固定高度，保证下面的卡片顶边和日历顶边对齐。 */}
