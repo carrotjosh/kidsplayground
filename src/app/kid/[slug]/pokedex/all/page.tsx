@@ -39,14 +39,17 @@ export default async function AllSpeciesPage({
 
   const levelUp = await checkLevelUp(child.id);
   const level = levelUp?.level ?? child.level;
+  // 只翻到等级已经放出来的那一段为止。
+  // 原来一路排到 386、把没解锁的画成锁头，结果低等级的孩子要翻过好几页全是锁的空页，
+  // 那不是目标感是挫败感。看不见的东西用一句"升级后解锁更多"交代就够了。
   const ceiling = speciesCeilingForLevel(level);
-  const total = REGIONS[REGIONS.length - 1].ceiling;
+  const allOpen = ceiling >= REGIONS[REGIONS.length - 1].ceiling;
 
-  const pageCount = Math.ceil(total / PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(ceiling / PAGE_SIZE));
   // 页码来自 URL，是不可信输入：夹到合法范围而不是相信它
   const page = Math.min(Math.max(Number(p) || 1, 1), pageCount);
   const from = (page - 1) * PAGE_SIZE + 1;
-  const to = Math.min(page * PAGE_SIZE, total);
+  const to = Math.min(page * PAGE_SIZE, ceiling);
 
   const [species, mine] = await Promise.all([
     prisma.pokemonSpecies.findMany({
@@ -80,7 +83,6 @@ export default async function AllSpeciesPage({
       <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-5 gap-2 overflow-y-auto sm:grid-cols-6 lg:grid-cols-8">
         {species.map((s) => {
           const got = owned.has(s.id);
-          const locked = s.id > ceiling;
           return (
             <Link
               key={s.id}
@@ -104,7 +106,7 @@ export default async function AllSpeciesPage({
               <span
                 className={`kid-text w-full truncate text-xs ${got ? "text-slate-700" : "text-slate-500"}`}
               >
-                {got ? s.nameZh : locked ? "🔒" : "？？？"}
+                {got ? s.nameZh : "？？？"}
               </span>
               {got && (
                 <span className="pixel-font text-[8px] text-nes-brown">
@@ -114,14 +116,17 @@ export default async function AllSpeciesPage({
             </Link>
           );
         })}
-      </div>
 
-      {/* 等级还没开到这一页时说清楚原因，不然一整页锁头很挫败 */}
-      {from > ceiling && (
-        <p className="kid-text shrink-0 text-center text-sm text-white lg:text-base">
-          <Pinyin text={`这一页要打卡到更高等级才会出现（现在开放到 No.${ceiling}）`} /> 🔒
-        </p>
-      )}
+        {/* 摆在最后一只的后面，位置本身就说明了"到这儿为止，后面还有" */}
+        {!allOpen && page === pageCount && (
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/70 p-1 text-center">
+            <span className="text-2xl">🔒</span>
+            <span className="kid-text text-xs text-white">
+              <Pinyin text="升级后解锁更多" />
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* 翻页。孩子端不滚动，所以按钮做大、放在底部拇指够得到的位置 */}
       <div className="flex shrink-0 items-center gap-2">
