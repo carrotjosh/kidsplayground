@@ -32,8 +32,11 @@ export default async function EconomyAdminPage() {
       <h1 className="text-2xl font-bold">经济体检</h1>
 
       <p className="pixel-card bg-amber-50 p-4 text-sm text-slate-600">
-        所有价格本来是照着「每天 25 阳光」定的。你一改任务模板日薪就变了，而礼物、精灵球、植物的
-        价格不会自己跟上——这一页就是把它们换算成「几天工资」摊开来看。
+        这一页把每个价格换算成「孩子要干几天」，好让你看出定价还合不合适。
+        <br />
+        <b>日薪变了不等于价格就错了。</b>阳光和任务难度是挂钩的，所以「200 阳光」永远代表
+        同样多的工作量——加一门课只是让他赚得更快，每份奖励背后的付出没变。
+        要不要跟着改价，取决于你想保持「同样的付出换同样的东西」还是「同样的时间换同样的东西」。
         <br />
         <b>系统自动发的那些数额（满勤奖、刷新费、里程碑、重复返还）不用管</b>，
         它们已经改成按日薪算了，改任务会自动跟上。
@@ -61,8 +64,8 @@ export default async function EconomyAdminPage() {
         </div>
         {hasDrift && (
           <form action={acceptCurrentPricesAction}>
-            <button type="submit" className="text-xs text-slate-500 underline">
-              价格就这样，别再提示了
+            <button type="submit" className="pixel-btn bg-white px-3 py-2 text-sm text-slate-700">
+              不改价（付出不变）
             </button>
           </form>
         )}
@@ -94,10 +97,11 @@ export default async function EconomyAdminPage() {
       {/* ---- 校准 ---- */}
       {hasDrift && (
         <div className="pixel-card flex flex-col gap-3 bg-white p-5">
-          <h2 className="font-semibold">调整价格</h2>
+          <h2 className="font-semibold">跟着日薪改价（时间不变）</h2>
           <p className="text-sm text-slate-500">
-            不一定要一次调到位——大礼物一次涨三成，对孩子是个不小的打击，分两三次慢慢来更容易接受。
-            只调一部分的话，基准值会记成「调到哪儿了」，这一页会继续如实显示还剩多少没调。
+            让大礼物仍然是「攒差不多那么多天」。也不一定要一次调到位——一次涨三成对孩子是个
+            不小的打击，分两三次慢慢来更容易接受。只调一部分的话，基准值会记成「调到哪儿了」，
+            这一页会继续如实显示还剩多少没调。
           </p>
           <RecalibrateForm
             action={recalibrateAction}

@@ -115,14 +115,21 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       detail: "日薪是 0，孩子赚不到阳光，所有价格都没有意义。先去「任务模板」加几项。",
     });
   } else if (Math.abs(drift - 1) >= DRIFT_THRESHOLD) {
+    // 刻意不说"价格失准了，快校准"。
+    //
+    // 日薪变了**不一定**意味着价格错了。阳光本来就和任务难度挂钩，所以
+    // 「200 阳光」永远代表同样多的工作量——加了一门课只是让孩子赚得更快，
+    // 每份奖励背后的付出没变。要不要跟着改价，取决于家长想保持哪个量不变，
+    // 这是个价值判断，不该由这个页面替他做。
     const pct = Math.round(Math.abs(drift - 1) * 100);
+    const days = drift > 1 ? "更快" : "更慢";
     findings.push({
       level: "warn",
       title: `日薪从 ${baseline} 变成了 ${rate}`,
       detail:
-        drift > 1
-          ? `孩子每天多赚 ${pct}%，现有价格相对便宜了 ${Math.round((1 - 1 / drift) * 100)}%。可以一键按 ${drift.toFixed(2)}× 校准。`
-          : `孩子每天少赚 ${pct}%，现有价格相对贵了 ${Math.round((1 / drift - 1) * 100)}%。可以一键按 ${drift.toFixed(2)}× 校准。`,
+        `孩子每天${drift > 1 ? "多" : "少"}赚 ${pct}%，同一份奖励现在攒得${days}了。改不改价看你想保持哪个不变：` +
+        `想让「同样的付出换同样的东西」就不用改——阳光和任务难度挂钩，付出本来就没变，只是赚得${days}；` +
+        `想让「同样的时间换同样的东西」就按 ${drift.toFixed(2)}× 校准。`,
     });
   }
 
