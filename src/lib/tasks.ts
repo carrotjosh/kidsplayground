@@ -25,7 +25,16 @@ export function isTemplateDueOn(
     case ScheduleType.WORKDAY:
       return getDayType(dateString).type === "WORKDAY";
     case ScheduleType.HOLIDAY:
-      return getDayType(dateString).type === "HOLIDAY";
+      // HOLIDAY 的意思是**休息日**，不是"仅法定节假日"。
+      //
+      // getDayType 把不上学的日子分成两种：普通双休（WEEKEND）和春节国庆这类
+      // 法定假期（HOLIDAY）。排期上不该区分这两者——家长说"休息日读一小时书"，
+      // 指的当然是每个周末都读，而不是一年只有那十来天。
+      //
+      // 写成"不是 WORKDAY"而不是列举 WEEKEND|HOLIDAY：这样它和上面的 WORKDAY
+      // 是**严格互补**的，每一天必定落进其中一边、不会两边都不算。
+      // 调休补课的周末在 getDayType 里已经算 WORKDAY，所以那天自动不算休息日。
+      return getDayType(dateString).type !== "WORKDAY";
     case ScheduleType.WEEKDAYS:
     default:
       return template.weekdays.includes(weekdayOfDateString(dateString));
@@ -78,25 +87,16 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
 export async function getOrCreateTodayTasks(childId: string) {
   const dateString = todayDateString();
   const date = todayAsUtcDate();
-  const weekday = weekdayOfDateString(dateString);
-  const { type: dayType } = getDayType(dateString);
 
   const [activeTemplates, existing] = await Promise.all([
     prisma.taskTemplate.findMany({ where: { childId, active: true } }),
     prisma.dailyTask.findMany({ where: { childId, date }, orderBy: { createdAt: "asc" } }),
   ]);
 
-  const dueTemplates = activeTemplates.filter((template) => {
-    switch (template.scheduleType) {
-      case ScheduleType.WORKDAY:
-        return dayType === "WORKDAY";
-      case ScheduleType.HOLIDAY:
-        return dayType === "HOLIDAY";
-      case ScheduleType.WEEKDAYS:
-      default:
-        return template.weekdays.includes(weekday);
-    }
-  });
+  // 复用 isTemplateDueOn，不要在这儿再抄一份 switch——这两处原来是两份一模一样的
+  // 判定逻辑，改「休息日包含双休」的时候差点只改了一处，那样"今天该做什么"
+  // 和"这个月该打卡几天"就会对不上。
+  const dueTemplates = activeTemplates.filter((template) => isTemplateDueOn(template, dateString));
 
   const existingTemplateIds = new Set(existing.map((t) => t.templateId).filter(Boolean));
   const missing = dueTemplates.filter((t) => !existingTemplateIds.has(t.id));

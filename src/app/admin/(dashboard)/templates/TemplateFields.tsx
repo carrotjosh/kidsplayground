@@ -14,10 +14,19 @@ const WEEKDAYS = [
   { value: 0, label: "周日" },
 ];
 
+/**
+ * 后两项是**严格互补**的：跟着国家放假安排走，每一天不是上学日就是休息日。
+ * 文案上要让人一眼看出这一点，否则很容易以为"休息日"只有春节国庆那十来天
+ * （这正是它原来的行为，也正是那个 bug）。
+ */
 const SCHEDULE_OPTIONS = [
   { value: "WEEKDAYS", label: "按星期几", hint: "自己勾选周一到周日" },
-  { value: "WORKDAY", label: "法定工作日", hint: "跟着国家放假安排走，含调休上学的周末" },
-  { value: "HOLIDAY", label: "法定节假日", hint: "春节、国庆这类法定假期（不含普通周末）" },
+  { value: "WORKDAY", label: "上学日", hint: "跟着国家放假安排走，含调休补课的周末" },
+  {
+    value: "HOLIDAY",
+    label: "休息日",
+    hint: "双休日 + 春节国庆这类法定假期；调休补课的那个周末不算",
+  },
 ];
 
 export type TemplateFieldValues = {

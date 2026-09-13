@@ -8,8 +8,8 @@ import { TemplateFields, type TemplateFieldValues } from "./TemplateFields";
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
 function formatSchedule(scheduleType: string, weekdays: number[]): string {
-  if (scheduleType === "WORKDAY") return "法定工作日（含调休上学）";
-  if (scheduleType === "HOLIDAY") return "法定节假日";
+  if (scheduleType === "WORKDAY") return "上学日（含调休补课的周末）";
+  if (scheduleType === "HOLIDAY") return "休息日（双休 + 法定假期）";
   return [...weekdays]
     .sort((a, b) => a - b)
     .map((d) => `周${WEEKDAY_LABELS[d]}`)
