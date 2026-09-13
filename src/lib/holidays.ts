@@ -4,6 +4,10 @@ import { getDayDetail } from "chinese-days";
  * WORKDAY  上学日（含被调休调成工作日的周末）
  * WEEKEND  普通周末
  * HOLIDAY  法定节假日（春节、国庆等，含调休放假的工作日）
+ *
+ * 注意这三档是**给界面展示用的**（日历上普通周末和法定假期底色不同）。
+ * 任务排期不分这么细：那边只有"上学日 / 休息日"两种，
+ * 休息日 = 不是 WORKDAY 的所有日子（见 lib/tasks.ts 的 isTemplateDueOn）。
  */
 export type DayType = "WORKDAY" | "WEEKEND" | "HOLIDAY";
 
