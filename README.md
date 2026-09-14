@@ -147,6 +147,58 @@ npm run dev
 4. 点 Deploy，等构建完成后会拿到一个 `https://xxx.vercel.app` 的线上地址。
 5. 线上环境同样跑一遍 1.4 的走查清单（可以新建一个明确标记"测试"的任务/礼物，走完后在后台删除或停用）。
 
+> ⚠️ **`*.vercel.app` 这个默认域名在国内打不开**，而这个应用是给国内的孩子用的。
+> 想真正用起来必须配自定义域名 + Cloudflare 代理，见下一节。
+
+### 2.1 自定义域名与国内访问
+
+`*.vercel.app` 打不开有两层原因，实测确认过（2026-09）：
+
+| 测的什么 | 结果 |
+|---|---|
+| 国内手机流量打开 `https://<自定义域名>`，A 记录直接指向 Vercel `76.76.21.21` | ❌ 连不上（Safari「打不开该页面」，不是证书错误也不是 DNS 错误） |
+| 国内手机流量打开 `https://www.cloudflare.com` | ✅ 正常 |
+
+也就是说**不只是 `vercel.app` 这个域名被墙，Vercel 的 anycast IP 本身从国内就连不上**——
+换个自己的域名直连 Vercel 一样没用。而 Cloudflare 的边缘节点是通的，
+所以要让 Cloudflare 挡在前面代理回源：
+
+```
+访客 ──HTTPS──> Cloudflare 边缘 ──HTTPS──> Vercel（源站）
+      访客看到的是               这一段不校验证书
+      Cloudflare 的证书           （见下面的 SSL 模式）
+```
+
+配置步骤：
+
+1. **域名注册商处**（这里用的阿里云）：完成实名认证，否则 DNS 改不了
+2. **Vercel**：项目 → Settings → Domains 添加域名，或 `vercel domains add <域名> <项目名>`
+3. **Cloudflare**：Add domain → **Connect a domain**（不是 Transfer，域名继续留在原注册商）→ 选 Free
+4. **Cloudflare DNS**：确保有这两条，且都开**橙色云朵（Proxied）**
+   ```
+   A      @     76.76.21.21            🟠 Proxied
+   CNAME  www   cname.vercel-dns.com   🟠 Proxied
+   ```
+5. **回注册商改 NS**：换成 Cloudflare 给的那两个（形如 `xxx.ns.cloudflare.com`）。
+   阿里云提示需要 24–48 小时生效，是注册局层面的下发延迟，急不得
+6. **Cloudflare → SSL/TLS → Overview 设成 `Full`**
+
+**第 6 步的 `Full` 不能想当然换成别的**，三个选项各有坑：
+
+| 模式 | Cloudflare→Vercel | 后果 |
+|---|---|---|
+| Flexible | 明文 HTTP | ❌ Vercel 把 HTTP 跳 HTTPS、Cloudflare 再转回 HTTP → **无限重定向** |
+| **Full** | HTTPS，不校验证书 | ✅ 初始用这个 |
+| Full (strict) | HTTPS，严格校验 | ⚠️ 一开始会死锁 |
+
+死锁是这么来的：`Full (strict)` 要求源站先有有效证书，而 Vercel 签证书走 HTTP-01
+质询、需要 Let's Encrypt 穿过 Cloudflare 访问到它——两边互相等。
+先用 `Full` 打破循环，等 Vercel 证书签好之后再升到 `Full (strict)`。
+
+**关于公司内网**：如果你的公司网关按 TLD 封锁（实测 Roche 就封了整个 `.xyz`，
+而且是 DNS 劫持 + TLS SNI 双层拦截），那么无论托管在哪、前面挂不挂 CDN，
+在公司网络里都打不开。这种情况只能换一个没被封的 TLD（比如 `.com`）。
+
 ## 3. 正式投入使用
 
 1. 登录线上 `/admin`，进入"任务模板"，把示例任务停用，换成孩子真实的每日任务。
