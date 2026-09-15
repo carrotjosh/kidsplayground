@@ -670,6 +670,10 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
       });
 
       const isSafe =
+        // 家长把惩罚关了。**注意循环照跑、游标照推**——只是不执行惩罚。
+        // 靠"不调用这个函数"来关的话，游标会停在原地，重新打开的那一刻
+        // 会把攒下来的所有天一次性补判，一口气跑掉一串宝可梦。
+        !child.penaltyEnabled ||
         caughtThatDay > 0 ||
         dayTasks.length === 0 ||
         dayTasks.every((t) => t.status === TaskStatus.DONE);

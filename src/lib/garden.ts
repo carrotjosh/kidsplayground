@@ -269,7 +269,12 @@ export async function settleGardenForChild(childId: string): Promise<GardenEvent
       // 全部清空、永远有空位，所以"一天种一棵最便宜的向日葵"就能永久免疫，
       // 而那 8 阳光收获时还连本带利还回来，等于免疫是负成本白送，
       // "任务没做完会有后果"这条规则实际上根本不存在。
-      const isSafe = dayTasks.length === 0 || dayTasks.every((t) => t.status === TaskStatus.DONE);
+      const isSafe =
+        // 家长把惩罚关了。同 settlePokedexForChild：循环照跑、游标照推进，
+        // 只是不吃植物——否则重新打开时会把这段时间一次性补吃回来。
+        !child.penaltyEnabled ||
+        dayTasks.length === 0 ||
+        dayTasks.every((t) => t.status === TaskStatus.DONE);
 
       if (!isSafe) {
         const alivePlants = await tx.plant.findMany({
