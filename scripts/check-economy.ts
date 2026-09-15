@@ -17,7 +17,7 @@ import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
 import { purgeTestTenants } from "../src/lib/testTenant";
-import { addDays, dateStringToUtcDate, todayDateString } from "../src/lib/date";
+import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
   dailyEarnRate,
   dailyEarnRateFromTemplates,
@@ -368,6 +368,44 @@ async function main() {
     ]);
     expect("当天新种的那棵被吃", freshAfter.status, "EATEN");
     expect("养了 5 天的那棵还活着", oldAfter.status, "ALIVE");
+
+    // ---------- 惩罚开关：关掉之后游标仍然要走 ----------
+    //
+    // 这是整个开关**唯一真正危险**的地方。如果靠"不调用结算函数"来关，
+    // 游标会停在原地；家长关一个月再打开，那一刻会把 30 天一次性补判，
+    // 一口气吃掉一串植物 / 跑掉一串宝可梦——比不关还糟，而且家长完全预料不到。
+    // 所以断言两件事：关闭期间不产生惩罚，且**游标照样推进到昨天**。
+    console.log("\n【惩罚开关】关掉之后不惩罚，但游标必须照常推进");
+    await prisma.plant.deleteMany({ where: { childId: child.id } });
+    await prisma.child.update({
+      where: { id: child.id },
+      data: {
+        penaltyEnabled: false,
+        gardenSettledThrough: dateStringToUtcDate(addDays(today, -6)),
+      },
+    });
+    await mkPlant(0, "关闭期间的向日葵", 6);
+    const offEvents = await settleGardenForChild(child.id);
+    expect("关闭期间的惩罚事件数", offEvents.filter((e) => e.outcome === "PLANT_EATEN").length, 0);
+    expect(
+      "关闭期间植物还活着",
+      (await prisma.plant.findFirstOrThrow({ where: { childId: child.id } })).status,
+      "ALIVE"
+    );
+    const afterOff = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
+    expect(
+      "游标已推进到昨天（重新打开时不会被一次性补罚）",
+      afterOff.gardenSettledThrough && formatStoredDate(afterOff.gardenSettledThrough),
+      addDays(today, -1)
+    );
+
+    // 打开之后照常惩罚，而且只从现在往后算
+    await prisma.child.update({
+      where: { id: child.id },
+      data: { penaltyEnabled: true, gardenSettledThrough: dateStringToUtcDate(addDays(today, -2)) },
+    });
+    const onEvents = await settleGardenForChild(child.id);
+    expect("重新打开后恢复惩罚", onEvents.filter((e) => e.outcome === "PLANT_EATEN").length, 1);
 
     await prisma.plant.deleteMany({ where: { childId: child.id } });
     await prisma.child.update({
