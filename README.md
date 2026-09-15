@@ -195,6 +195,24 @@ npm run dev
 质询、需要 Let's Encrypt 穿过 Cloudflare 访问到它——两边互相等。
 先用 `Full` 打破循环，等 Vercel 证书签好之后再升到 `Full (strict)`。
 
+**怎么知道证书签好了**（这是升 `Full (strict)` 唯一的前提）：
+
+```bash
+npx vercel certs ls
+# id                             cns          expiration  renew  age
+# cert_xxxxxxxxxxxxxxxxxxxxxxxx  你的域名         in 89d   yes   20h
+```
+
+列出来了就可以去 Cloudflare → SSL/TLS → Overview 改成 `Full (strict)`。
+不升也能用，但 Cloudflare 到 Vercel 那一段不校验证书，中间被劫持时发现不了。
+
+> 另外 `vercel domains inspect <域名>` 会把 Nameservers 那两行标成 ✘
+> （它期望你把 NS 指到 `ns1/ns2.vercel-dns.com`）。**这是预期的**——
+> 我们就是要用 Cloudflare 的 NS 才能让它挡在前面代理，这个 ✘ 可以无视。
+
+实测结果（2026-09-15，`7234327.xyz`）：阿里云改 NS 后不到 24 小时生效，
+国内手机流量能正常打开，Vercel 也自动签发了 Let's Encrypt 证书。
+
 **关于公司内网**：如果你的公司网关按 TLD 封锁（实测 Roche 就封了整个 `.xyz`，
 而且是 DNS 劫持 + TLS SNI 双层拦截），那么无论托管在哪、前面挂不挂 CDN，
 在公司网络里都打不开。这种情况只能换一个没被封的 TLD（比如 `.com`）。
