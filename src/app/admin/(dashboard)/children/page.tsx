@@ -1,4 +1,5 @@
 import { getActiveChild, listChildren } from "@/lib/child";
+import { requestOrigin } from "@/lib/origin";
 
 import { ChildForm } from "./ChildForm";
 import { ChildRow } from "./ChildRow";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ChildrenAdminPage() {
   const children = await listChildren();
+  const origin = await requestOrigin();
   // 一个孩子都还没有时 getActiveChild 会抛错，所以这一页（也只有这一页）要能在没有孩子的
   // 情况下渲染——新注册的账号第一件事就是落到这里建档。
   const active = children.length > 0 ? await getActiveChild() : null;
@@ -33,6 +35,7 @@ export default async function ChildrenAdminPage() {
           <ChildRow
             key={child.id}
             child={{ id: child.id, name: child.name, slug: child.slug }}
+            origin={origin}
             isActive={child.id === active?.id}
             isOnly={children.length === 1}
           />

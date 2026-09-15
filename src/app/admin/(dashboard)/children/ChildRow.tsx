@@ -6,10 +6,13 @@ import { deleteChildAction, renameChildAction, switchChildAction } from "./actio
 
 export function ChildRow({
   child,
+  origin,
   isActive,
   isOnly,
 }: {
   child: { id: string; name: string; slug: string };
+  /** 站点地址，服务端通过 lib/origin.ts 从请求头取，用来拼出可点开的全链接 */
+  origin: string;
   isActive: boolean;
   /** 名下只剩这一个孩子时不让删——删完后台每页都会报"还没有创建孩子档案" */
   isOnly: boolean;
@@ -24,7 +27,7 @@ export function ChildRow({
     null
   );
   const deleteFormRef = useRef<HTMLFormElement>(null);
-  const kidPath = `/kid/${child.slug}`;
+  const kidUrl = `${origin}/kid/${child.slug}`;
 
   if (editing) {
     return (
@@ -69,8 +72,20 @@ export function ChildRow({
           {child.name}
           {isActive && <span className="ml-2 text-xs text-nes-green">当前管理中</span>}
         </p>
-        <p className="truncate text-sm text-slate-500">
-          孩子端链接：<code className="text-xs">{kidPath}</code>
+        {/* 全链接而不是 /kid/xxx：家长要能直接点开去看孩子端长什么样，
+            也要能整条复制到孩子的平板上。新开一个标签页——在原地跳走的话
+            后台就没了，而家长多半只是想瞄一眼。 */}
+        <p className="text-sm text-slate-500">
+          孩子端链接：
+          <a
+            href={kidUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="break-all font-mono text-xs text-nes-green underline underline-offset-2 hover:text-nes-red"
+            title="在新标签页打开孩子端"
+          >
+            {kidUrl}
+          </a>
         </p>
       </div>
 
