@@ -93,7 +93,7 @@ export function CreatureCard({
     >
       {/* 顶栏：名字 + HP */}
       <div className="flex items-baseline justify-between gap-1">
-        <p className="kid-text truncate text-base text-slate-900">
+        <p className="kid-text truncate kid-label text-slate-900">
           <Pinyin text={creature.nameZh} />
         </p>
         <span className="pixel-font shrink-0 text-[9px] text-nes-red">HP{creature.hp}</span>
@@ -109,7 +109,7 @@ export function CreatureCard({
           className="h-full w-full object-contain p-1"
         />
         {creature.isShiny && (
-          <span className="absolute right-0.5 top-0.5 text-sm" title="闪光个体">
+          <span className="absolute right-0.5 top-0.5 kid-label" title="闪光个体">
             ✨
           </span>
         )}
@@ -138,7 +138,7 @@ export function CreatureCard({
           return (
             <span
               key={t}
-              className={`kid-text border-2 border-nes-black px-1.5 text-xs text-white ${style.className}`}
+              className={`kid-text kid-note border-2 border-nes-black px-1.5 text-white ${style.className}`}
             >
               {style.label}
             </span>
@@ -148,16 +148,16 @@ export function CreatureCard({
 
       {/* 招牌技能 */}
       <div className="flex items-baseline justify-between gap-1 border-t-2 border-nes-black/20 pt-1">
-        <span className="kid-text truncate text-sm text-slate-800">{creature.moveName}</span>
+        <span className="kid-text truncate kid-label text-slate-800">{creature.moveName}</span>
         <span className="pixel-font shrink-0 text-[9px] text-nes-brown">{creature.movePower}</span>
       </div>
 
-      <p className="kid-text truncate text-xs text-slate-600" title={creature.ability}>
+      <p className="kid-text truncate kid-note text-slate-600" title={creature.ability}>
         特性：{creature.ability}
       </p>
 
       {/* 稀有度星级 */}
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex items-center justify-between kid-note">
         <span className="text-amber-500">{"★".repeat(creature.rarity)}</span>
         <span className="kid-text text-slate-500">{RARITY_LABELS[creature.rarity]}</span>
       </div>

@@ -37,11 +37,12 @@ export default async function RewardsPage({
   const cooldowns = await getCooldownStates(child.id, rewards);
 
   return (
-    // h-dvh + overflow-hidden：孩子端跑在 iPad / 学习机上，整页滚动在触屏上很容易误触，
-    // 而且滚下去之后底部那排导航就看不见了。页面框固定成一屏，只让礼物列表自己滚。
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
-      <header className="flex shrink-0 items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+    // 页面框固定成一屏这件事由 layout.tsx 负责（孩子端跑在 iPad / 学习机上，
+    // 整页滚动在触屏上很容易误触，滚下去之后底部导航还会看不见）。
+    // 这里要做的是：只让礼物列表自己滚。
+    <>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text="礼物商店" /> 🎁
         </h1>
         <PointsBadge balance={balance} />
@@ -51,7 +52,7 @@ export default async function RewardsPage({
       {/* min-h-0 是必须的：不写的话 flex 子项不会缩到内容高度以下，overflow 就永远不生效 */}
       <section className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 lg:grid-cols-4">
         {rewards.length === 0 ? (
-          <p className="pixel-card kid-text col-span-full bg-white p-6 text-center text-lg text-slate-500 lg:p-10 lg:text-2xl">
+          <p className="pixel-card kid-text col-span-full bg-white p-6 text-center kid-body text-slate-500 lg:p-10">
             <Pinyin text="还没有礼物，等家长上架吧" /> 🎁
           </p>
         ) : (
@@ -95,6 +96,6 @@ export default async function RewardsPage({
           collectionNavItem(child.theme, slug),
         ]}
       />
-    </main>
+    </>
   );
 }

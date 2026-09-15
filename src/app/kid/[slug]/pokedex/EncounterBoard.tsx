@@ -144,16 +144,16 @@ function EncounterCard({
           className={`h-28 w-28 shrink-0 object-contain ${done && encounter.status === "FLED" ? "opacity-40 grayscale" : ""}`}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="kid-text text-xl text-slate-800">
+          <p className="kid-text kid-body text-slate-800">
             {labels.names[encounter.id]}{" "}
             <span className="text-slate-400">{GENDER_MARK[encounter.gender]}</span>
             {encounter.isShiny && <span className="ml-1 text-amber-500">✨</span>}
           </p>
-          <p className="kid-text text-sm text-amber-600">
+          <p className="kid-text kid-label text-amber-600">
             {"★".repeat(encounter.rarity)} {RARITY_LABELS[encounter.rarity]}
             {encounter.isShiny && <> · {labels.shiny}</>}
           </p>
-          <p className="kid-text text-xs text-slate-500">{labels.details[encounter.id]}</p>
+          <p className="kid-text kid-note text-slate-500">{labels.details[encounter.id]}</p>
           {/* 四项能力值，给"值不值得用好球"一个判断依据 */}
           <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
             {[
@@ -188,7 +188,7 @@ function EncounterCard({
         )
       ) : (
         <>
-          <p className="kid-text text-center text-sm text-slate-500">
+          <p className="kid-text text-center kid-label text-slate-500">
             {labels.attemptsLeft[encounter.attemptsLeft]}
           </p>
           <form action={formAction} className="grid grid-cols-2 gap-2">
@@ -208,7 +208,7 @@ function EncounterCard({
                   }`}
                 >
                   <BallSprite tier={ball.tier} className="h-8 w-8" />
-                  <span className="kid-text text-xs">{labels.ballTitles[ball.id]}</span>
+                  <span className="kid-text kid-note">{labels.ballTitles[ball.id]}</span>
                   <span className="pixel-font text-[9px] text-nes-brown">{ball.cost} ☀️</span>
                   {/* 把成功率直接摆出来：这是"该用哪个球"唯一有意义的依据，
                       也顺便让孩子对概率有点直观感受 */}
@@ -220,10 +220,10 @@ function EncounterCard({
             })}
           </form>
           {isPending && (
-            <p className="kid-text text-center text-sm text-slate-500">{labels.throwing}</p>
+            <p className="kid-text text-center kid-label text-slate-500">{labels.throwing}</p>
           )}
           {!balls.some((b) => balance >= b.cost) && (
-            <p className="kid-text text-center text-sm text-nes-red">{labels.notEnough}</p>
+            <p className="kid-text text-center kid-label text-nes-red">{labels.notEnough}</p>
           )}
         </>
       )}
@@ -235,7 +235,7 @@ function EncounterCard({
 
 function ThrowFeedback({ state }: { state: NonNullable<State> }) {
   if ("error" in state) {
-    return <p className="kid-text text-sm text-nes-red">{state.error}</p>;
+    return <p className="kid-text kid-label text-nes-red">{state.error}</p>;
   }
 
   const caught = state.outcome === "CAUGHT";
@@ -245,9 +245,9 @@ function ThrowFeedback({ state }: { state: NonNullable<State> }) {
         caught ? "bg-nes-green text-white" : "bg-slate-200 text-slate-700"
       }`}
     >
-      <Ruby annotated={state.title} className="kid-text text-base" />
+      <Ruby annotated={state.title} className="kid-text kid-label" />
       {state.notes.map((note: Annotated, i: number) => (
-        <Ruby key={i} annotated={note} className="kid-text text-xs" />
+        <Ruby key={i} annotated={note} className="kid-text kid-label" />
       ))}
     </div>
   );

@@ -16,7 +16,7 @@ export function PointsBadge({ balance }: { balance: number }) {
       <span className="animate-coin-spin text-3xl lg:text-4xl">☀️</span>
       <div>
         <p className="pixel-font text-[9px] text-nes-black lg:text-xs">SUNLIGHT</p>
-        <p className="pixel-font pixel-text-outline text-2xl text-white lg:text-3xl">{balance}</p>
+        <p className="pixel-font pixel-text-outline kid-title text-white">{balance}</p>
       </div>
     </div>
   );

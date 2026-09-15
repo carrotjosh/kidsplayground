@@ -107,7 +107,10 @@ ruby {
 }
 
 ruby rt {
-  font-size: 0.4em;
+  /* 0.5 而不是 0.4：拼音是这个应用最该看清的东西（孩子正在认字），
+     而 0.4 倍意味着 16px 的汉字配 6.4px 的拼音——那个尺寸在平板上根本读不出声调。
+     配合下面的 .kid-* 字号阶梯（正文最小 19px），拼音落在 9.5px 以上。 */
+  font-size: 0.5em;
   /* 拼音是带声调符号的拉丁字母，交给系统无衬线字体渲染，比像素/艺术字体清楚 */
   font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-weight: 400;
@@ -126,6 +129,47 @@ ruby rt {
 .kid-text {
   font-weight: 400;
   letter-spacing: 0.02em;
+}
+
+/* ------- 孩子端字号阶梯 -------
+
+   为什么要有这一套：原来每个页面自己写 text-sm / lg:text-base 这类，
+   复制粘贴之后漂移得很厉害——统计过一轮，用量最大的两档是 text-sm（54 处）
+   和 text-xs（34 处）。而拼音是汉字的 0.5 倍，14px 的字配 7px 的拼音，
+   认字阶段的孩子根本看不清声调，等于白标。
+
+   所以改成四档语义类，页面只说"这是标题 / 正文 / 次要 / 附注"，不再自己挑数字。
+
+   用 clamp() 而不是 Tailwind 断点：孩子端要同时伺候手机竖屏（375px）、
+   平板竖屏、平板横屏（1024px+），断点式跳变会在中间尺寸留下尴尬区间，
+   clamp 是连续的。中间那项用 vw，所以窗口一变字号跟着变，不用为每个设备调。
+
+   括号里是对应的拼音实际大小（= 字号 × 0.5）：
+     kid-title  22 → 34px   拼音 11 → 17px
+     kid-body   19 → 26px   拼音 9.5 → 13px   ← 带拼音的正文用这一档
+     kid-label  16 → 20px   拼音 8 → 10px     ← 短标签，能带拼音
+     kid-note   13 → 15px                     ← 纯辅助信息，不要带拼音
+*/
+.kid-title {
+  font-size: clamp(1.375rem, 3.2vw, 2.125rem);
+  line-height: 1.25;
+}
+
+.kid-body {
+  font-size: clamp(1.1875rem, 2.4vw, 1.625rem);
+  line-height: 1.4;
+}
+
+.kid-label {
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  line-height: 1.35;
+}
+
+/* 这一档故意小，只给"冷却 7 天""共 12 只"这类附注用。
+   **不要在这上面套 <Pinyin>** —— 拼音会小到 6.5px，不如不标。 */
+.kid-note {
+  font-size: clamp(0.8125rem, 1.4vw, 0.9375rem);
+  line-height: 1.3;
 }
 
 /* ------- 动画 ------- */
