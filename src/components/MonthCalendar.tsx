@@ -264,10 +264,31 @@ export function MonthCalendar({
   );
 }
 
-/** 月度进度条 + 满勤奖状态，孩子端和家长端共用。 */
-export function MonthProgress({ summary }: { summary: MonthSummary }) {
-  const { taskDays, reachedDays, remainingDays, monthEarned, bonusRatio, onTrackForBonus, bonusGranted } =
-    summary;
+/**
+ * 月度进度条 + 满勤奖状态，孩子端和家长端共用。
+ *
+ * big：孩子端用的放大版，和 MonthCalendar / MonthNav 的 big 是同一套约定。
+ * 不能两边都用 kid-label——孩子端 16~20px 是为认字留的，
+ * 家长端是桌面上的密集卡片，跟着一起放大会和周围的 text-sm 打架。
+ */
+export function MonthProgress({
+  summary,
+  big = false,
+}: {
+  summary: MonthSummary;
+  big?: boolean;
+}) {
+  const small = big ? "kid-label" : "text-sm";
+  const {
+    taskDays,
+    reachedDays,
+    remainingDays,
+    monthEarned,
+    bonusRatio,
+    bonusPoints,
+    onTrackForBonus,
+    bonusGranted,
+  } = summary;
   const needed = taskDays > 0 ? Math.ceil(taskDays * bonusRatio) : 0;
   // 剩下的日子全部达标也够不到满勤线，就别再显示"还差 N 天"吊着了
   const stillPossible = reachedDays + remainingDays >= needed;
@@ -276,23 +297,23 @@ export function MonthProgress({ summary }: { summary: MonthSummary }) {
     <div className="pixel-card flex flex-col gap-2 bg-white p-4 lg:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-bold text-slate-800">本月成绩单</p>
-        <p className="text-sm text-slate-600">
+        <p className={`${small} text-slate-600`}>
           共获得 <span className="font-bold text-amber-600">{monthEarned}</span> 阳光
         </p>
       </div>
 
       {!summary.bonus.eligible ? (
         // 中途加入的月份：说清楚为什么不算，别让家长以为是 bug
-        <p className="text-sm text-slate-500">
+        <p className={`${small} text-slate-500`}>
           {summary.bonus.reason === "TOO_SHORT"
             ? `这个月是从 ${summary.bonus.startDate} 开始的，剩下的天数不够评满勤，从下个月开始算。`
             : "这个月还没开始打卡。"}
         </p>
       ) : taskDays === 0 ? (
-        <p className="text-sm text-slate-500">这个月还没有安排任务。</p>
+        <p className={`${small} text-slate-500`}>这个月还没有安排任务。</p>
       ) : (
         <>
-          <p className="text-sm text-slate-600">
+          <p className={`${small} text-slate-600`}>
             本月该打卡 {taskDays} 天，已达标{" "}
             <span className="font-bold text-nes-green">{reachedDays}</span> 天，满勤奖需要至少{" "}
             {needed} 天
@@ -303,11 +324,14 @@ export function MonthProgress({ summary }: { summary: MonthSummary }) {
               style={{ width: `${Math.min(100, (reachedDays / taskDays) * 100)}%` }}
             />
           </div>
-          <p className="text-sm font-bold">
+          <p className={`${small} font-bold`}>
+            {/* 金额必须读 summary.bonusPoints，不能写死。
+                满勤奖早就改成按日薪算了（6 天工资，见 lib/economy.ts），
+                写死 100 的话日薪一变就开始骗人——孩子看到"发 100"，实际到账 258。 */}
             {bonusGranted
-              ? "🏅 满勤奖 +100 阳光已发放！"
+              ? `🏅 满勤奖 +${bonusPoints} 阳光已发放！`
               : onTrackForBonus
-                ? "🎉 已经达到满勤线，月底自动发 100 阳光！"
+                ? `🎉 已经达到满勤线，月底自动发 ${bonusPoints} 阳光！`
                 : stillPossible
                   ? `还要再达标 ${needed - reachedDays} 天就能拿满勤奖 🏅`
                   : "这个月的满勤奖够不到了，下个月重新开始 💪"}

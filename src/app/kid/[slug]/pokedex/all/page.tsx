@@ -68,12 +68,12 @@ export default async function AllSpeciesPage({
   const ownedOnPage = species.filter((s) => owned.has(s.id)).length;
 
   return (
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-6xl lg:gap-4 lg:p-6">
+    <>
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-3xl">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text="全部宝可梦" /> 📖
         </h1>
-        <p className="pixel-card kid-text bg-white px-3 py-1.5 text-base text-slate-700 lg:text-lg">
+        <p className="pixel-card kid-text bg-white px-3 py-1.5 kid-label text-slate-700">
           <Pinyin
             text={`No.${from}~${to} · ${regionAt(to)}地区 · 这一页收集了 ${ownedOnPage} / ${species.length}`}
           />
@@ -104,7 +104,7 @@ export default async function AllSpeciesPage({
               />
               <span className="pixel-font text-[8px] text-slate-400">No.{s.id}</span>
               <span
-                className={`kid-text w-full truncate text-xs ${got ? "text-slate-700" : "text-slate-500"}`}
+                className={`kid-text kid-note w-full truncate ${got ? "text-slate-700" : "text-slate-500"}`}
               >
                 {got ? s.nameZh : "？？？"}
               </span>
@@ -120,8 +120,8 @@ export default async function AllSpeciesPage({
         {/* 摆在最后一只的后面，位置本身就说明了"到这儿为止，后面还有" */}
         {!allOpen && page === pageCount && (
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/70 p-1 text-center">
-            <span className="text-2xl">🔒</span>
-            <span className="kid-text text-xs text-white">
+            <span className="kid-title">🔒</span>
+            <span className="kid-text kid-label text-white">
               <Pinyin text="升级后解锁更多" />
             </span>
           </div>
@@ -131,7 +131,7 @@ export default async function AllSpeciesPage({
       {/* 翻页。孩子端不滚动，所以按钮做大、放在底部拇指够得到的位置 */}
       <div className="flex shrink-0 items-center gap-2">
         <PageLink slug={slug} page={page - 1} disabled={page <= 1} label="← 上一页" />
-        <span className="pixel-card kid-text shrink-0 bg-white px-3 py-2 text-base text-slate-700 lg:text-lg">
+        <span className="pixel-card kid-text shrink-0 bg-white px-3 py-2 kid-label text-slate-700">
           {page} / {pageCount}
         </span>
         <PageLink slug={slug} page={page + 1} disabled={page >= pageCount} label="下一页 →" />
@@ -144,7 +144,7 @@ export default async function AllSpeciesPage({
           { href: `/kid/${slug}/pokedex/deck`, label: "我的牌库", emoji: "🗂️", tone: "green" },
         ]}
       />
-    </main>
+    </>
   );
 }
 
@@ -159,7 +159,7 @@ function PageLink({
   disabled: boolean;
   label: string;
 }) {
-  const cls = "pixel-btn kid-text flex-1 py-3 text-center text-lg lg:text-xl";
+  const cls = "pixel-btn kid-text flex-1 py-3 text-center kid-body";
   if (disabled) {
     return <span className={`${cls} cursor-default bg-slate-300 text-slate-500`}>{label}</span>;
   }

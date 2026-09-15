@@ -89,9 +89,9 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   return (
     // 框固定一屏。上半截（进度 + 今天遇到谁）是每天都要看的，必须常驻；
     // 牌库会长到几百张，只让它自己滚。
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
-      <header className="flex shrink-0 items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+    <>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text="我的图鉴" /> 📕
         </h1>
         <PointsBadge balance={balance} />
@@ -117,13 +117,13 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           {/* 分母是**当前地区**的数量，不是全部 386。不写清楚"关都地区"的话，
               看到 151 会以为一共就这么多——那正好抹掉了分批解锁想制造的期待感 */}
-          <p className="kid-text text-lg text-slate-800 lg:text-xl">
+          <p className="kid-text kid-body text-slate-800">
             <Pinyin text={`${regionName}地区已经收集`} />{" "}
-            <span className="text-2xl text-amber-600 lg:text-3xl">{distinctCount}</span>
+            <span className="kid-title text-amber-600">{distinctCount}</span>
             <span className="text-slate-500"> / {totalSpecies} </span>
             <Pinyin text="种" />
           </p>
-          <p className="kid-text text-sm text-slate-500 lg:text-base">
+          <p className="kid-text kid-label text-slate-500">
             <Pinyin text={`再收集 ${toNextMilestone} 种，奖励 ${milestoneBonus} 阳光`} /> 🏅
           </p>
         </div>
@@ -136,7 +136,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         {/* 后面还有多少没开放。不说的话孩子会以为图鉴就这些，
             而按等级分批放出来的全部意义就在于"后面还有" */}
         {ceiling < REGIONS[REGIONS.length - 1].ceiling && (
-          <p className="kid-text text-sm text-slate-500 lg:text-base">
+          <p className="kid-text kid-label text-slate-500">
             <Pinyin
               text={`升到 ${level + 1} 级再开放 ${speciesCeilingForLevel(level + 1) - ceiling} 只，后面一共还有 ${REGIONS[REGIONS.length - 1].ceiling - ceiling} 只没见过面`}
             />{" "}
@@ -149,7 +149,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           {[4, 3, 2, 1].map((r) => (
             <span
               key={r}
-              className="pixel-border kid-text bg-slate-100 px-2 py-1 text-sm text-slate-700"
+              className="pixel-border kid-text bg-slate-100 px-2 py-1 kid-label text-slate-700"
             >
               {"★".repeat(r)} {RARITY_LABELS[r]} {owned.filter((c) => c.rarity === r).length}
             </span>
@@ -160,11 +160,11 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       {/*
         今天遇到的宝可梦。这一块必须是**伸缩区**（min-h-0 flex-1 overflow-y-auto）：
         牌库搬走之后这一页一个 flex-1 都没有了，所有块都是 shrink-0，
-        内容一超过一屏就被 h-dvh 的 overflow-hidden 从底部裁掉——
+        内容一超过一屏就被 layout.tsx 那层容器的 overflow-hidden 从底部裁掉——
         连同底部那排导航一起，孩子就再也跳不到别的页面了。
       */}
       <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
+        <h2 className="pixel-text-outline kid-text kid-body text-white">
           <Pinyin text="今天遇到了" /> 👀
         </h2>
         {/* 有偿刷新：两只都不想要的时候，给孩子一个主动改变局面的选项 */}
@@ -188,7 +188,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
         )}
 
         {child.catchMissStreak > 0 && (
-          <p className="pixel-card kid-text bg-nes-yellow p-3 text-center text-base text-nes-black lg:text-lg">
+          <p className="pixel-card kid-text bg-nes-yellow p-3 text-center kid-label text-nes-black">
             <Pinyin text={`连续 ${child.catchMissStreak} 次没抓到，下一次运气更高`} /> 🍀
           </p>
         )}
@@ -278,6 +278,6 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
           { href: `/kid/${slug}/pokedex/all`, label: "全部宝可梦", emoji: "📖", tone: "pink" },
         ]}
       />
-    </main>
+    </>
   );
 }

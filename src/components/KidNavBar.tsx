@@ -24,6 +24,8 @@ export type KidNavItem = {
  *     页面就不用手动记得给第二个按钮加 animate-delay-half。
  *
  * compact：首页要把整页塞进一屏，按钮矮一点；其它页面可以滚动，用大一号的。
+ * 字号两种都用 kid-body——按钮上是要念的中文，compact 省的是**高度**（padding），
+ * 不该靠把字缩小来省。
  */
 export function KidNavBar({
   items,
@@ -32,19 +34,25 @@ export function KidNavBar({
   items: KidNavItem[];
   compact?: boolean;
 }) {
-  const size = compact ? "py-2 text-lg lg:py-3 lg:text-2xl" : "px-6 py-3 text-xl lg:py-4 lg:text-2xl";
+  const size = compact ? "py-2 lg:py-3" : "px-4 py-3 sm:px-6 lg:py-4";
 
   return (
     <div className="flex shrink-0 flex-col gap-1">
-      <div className="flex gap-2 lg:gap-3">
+      {/*
+        手机上必须能换行。图鉴页有三个按钮，其中一个叫「今天我要做的事」——
+        375px 宽的屏上三等分只有 115px，七个字加拼音根本排不下，
+        不换行的话要么挤成一团要么把整行顶出屏幕。
+        窄屏按 basis 50% 走两列（三个按钮就是 2+1），sm 起恢复成原来的一行等分。
+      */}
+      <div className="flex flex-wrap gap-2 lg:gap-3">
         {items.map((item, i) => (
           <Link
             key={item.href}
             href={item.href}
             // 奇数位的按钮把动画起点往前拨半个周期，两个按钮就一上一下交替漂浮。
-            className={`pixel-btn kid-text animate-bounce-slow ${
+            className={`pixel-btn kid-text kid-body animate-bounce-slow ${
               i % 2 === 1 ? "animate-delay-half" : ""
-            } flex flex-1 items-center justify-center gap-2 text-white ${TONE_CLASS[item.tone]} ${size}`}
+            } flex min-w-0 flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 text-center text-white sm:basis-0 ${TONE_CLASS[item.tone]} ${size}`}
           >
             {item.emoji} <Pinyin text={item.label} />
           </Link>
@@ -61,7 +69,7 @@ export function KidNavBar({
       */}
       <a
         href="/login"
-        className="self-end text-xs text-white/50 hover:text-white/90"
+        className="self-end kid-note text-white/50 hover:text-white/90"
         title="家长在这里登录，可以切回后台"
       >
         家长登录 →

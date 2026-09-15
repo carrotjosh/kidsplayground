@@ -30,7 +30,7 @@ export default async function KidIndexPage() {
           <Link
             key={child.id}
             href={`/kid/${child.slug}`}
-            className="pixel-card kid-text animate-bounce-slow flex min-w-44 flex-col items-center gap-3 bg-white px-8 py-7 text-center text-2xl text-slate-800 lg:text-3xl"
+            className="pixel-card kid-text animate-bounce-slow flex min-w-44 flex-col items-center gap-3 bg-white px-8 py-7 text-center kid-title text-slate-800"
           >
             <span className="text-6xl lg:text-7xl">🧒</span>
             <Pinyin text={child.name} />
