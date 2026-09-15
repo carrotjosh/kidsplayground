@@ -71,9 +71,9 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
   return (
     // 框固定一屏。花园棋盘按**剩余高度**撑成正方形（见下面那段注释），
     // 不再是按宽度定高——横屏平板上 6×6 按宽度算会高到屏幕装不下。
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6 2xl:max-w-6xl">
-      <header className="flex shrink-0 items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+    <>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text="我的花园" /> 🌻
         </h1>
         <PointsBadge balance={balance} />
@@ -105,11 +105,11 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
       {/* 集卡进度：每种植物要种够 setSize 棵，集齐就能一次性收获换阳光 */}
       <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="kid-text text-lg text-slate-800 lg:text-xl">
+          <p className="kid-text kid-body text-slate-800">
             <Pinyin text={`每种植物种够 ${setSize} 棵，就能一次收获`} />{" "}
             <span className="text-amber-600">{progress.bonus}</span> ☀️
           </p>
-          <p className="kid-text text-sm text-slate-500 lg:text-base">
+          <p className="kid-text kid-label text-slate-500">
             <Pinyin
               text={
                 stage >= GARDEN_STAGES.length
@@ -130,7 +130,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
             {progress.entries.map((entry, i) => (
               <span
                 key={entry.plantTypeId}
-                className={`pixel-border kid-text flex items-center gap-2 px-3 py-1.5 text-base lg:text-lg ${
+                className={`pixel-border kid-text flex items-center gap-2 px-3 py-1.5 kid-body ${
                   entry.alive >= entry.needed
                     ? "bg-nes-green text-white"
                     : "bg-slate-100 text-slate-600"
@@ -150,7 +150,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         )}
 
         {!progress.achievable && progress.entries.length > 0 && (
-          <p className="kid-text text-sm text-nes-red">
+          <p className="kid-text kid-label text-nes-red">
             现在的花园装不下一整套（{progress.entries.length} 种 × {setSize} 棵
             {progress.strayAlive > 0 && ` + ${progress.strayAlive} 棵已下架的植物`} 超过了{" "}
             {size} 个格子），请家长在「植物目录」里调整一下。
@@ -159,7 +159,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
 
         {/* 养得越久收获越多，孩子要看得见这件事，否则"种满就收"仍然是他的第一反应 */}
         {progress.spent > 0 && (
-          <p className="kid-text text-sm text-slate-500 lg:text-base">
+          <p className="kid-text kid-label text-slate-500">
             <Pinyin
               text={
                 progress.interestDays >= HARVEST_MAX_INTEREST_DAYS
@@ -197,7 +197,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
         {slots.map((plant, i) => (
           <div
             key={i}
-            className="pixel-border flex min-h-0 items-center justify-center bg-amber-100 p-1 text-2xl lg:text-4xl"
+            className="pixel-border flex min-h-0 items-center justify-center bg-amber-100 p-1 kid-title"
           >
             {plant ? (
               // floatDelay 按格子编号错开，十六棵植物就不会整整齐齐一起上下
@@ -217,7 +217,7 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
 
       {/* 植物商店。种类最多 6 种，横向排一行，高度固定不参与伸缩 */}
       <section className="flex shrink-0 flex-col gap-2">
-        <h2 className="pixel-text-outline kid-text text-lg text-white lg:text-xl">
+        <h2 className="pixel-text-outline kid-text kid-body text-white">
           <Pinyin text="种点什么？" />
         </h2>
         {/* flex + flex-1 而不是固定列数：植物种数会随花园升级从 4 变到 6，
@@ -277,6 +277,6 @@ export default async function GardenPage({ params }: { params: Promise<{ slug: s
           { href: `/kid/${slug}/rewards`, label: "礼物商店", emoji: "🎁", tone: "pink" },
         ]}
       />
-    </main>
+    </>
   );
 }

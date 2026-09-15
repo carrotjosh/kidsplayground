@@ -24,7 +24,7 @@ export function LevelBadge({ progress, href }: { progress: LevelProgress; href: 
         {/* 级数和称号并排放一行：竖着排三行会让这张卡比另外两张高一截，
             而顶栏的三张卡必须一样高 */}
         <p className="flex items-baseline gap-1.5 text-white">
-          <span className="pixel-font pixel-text-outline text-lg lg:text-2xl">
+          <span className="pixel-font pixel-text-outline kid-body">
             Lv.{progress.level}
           </span>
           <span className="kid-text text-[11px] leading-none lg:text-sm">

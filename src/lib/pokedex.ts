@@ -272,6 +272,14 @@ export async function ensureTodayEncounters(childId: string, dateString: string)
 /**
  * 造 count 只新的遇怪。自动生成和有偿刷新共用这一段，保证两边摇出来的分布一模一样。
  * slot 从 startSlot 往后排，靠 @@unique([childId, date, slot]) 防重复。
+ *
+ * **同一天不出重复的种类**。以前两只是各自独立摇的，撞车比直觉上频繁得多：
+ * 稀有度是先摇档、再在档里挑，而传说档只有 6 只——两只都摇到传说时
+ * 有 1/6 会是同一只。「偏向没抓到过的」那条加权还会让档内候选池越玩越小，
+ * 后期撞得更凶（档里只剩两只没抓到时，重复率直接到 50%）。
+ * 孩子看到并排两只一模一样的，会以为是 bug。
+ *
+ * 去重范围包含**当天已经在库里的那些**，所以刷新之后也不会再遇到今天刚抓到的那只。
  */
 async function createEncounters(
   childId: string,
@@ -301,6 +309,16 @@ async function createEncounters(
     ).map((c) => c.speciesId)
   );
 
+  // 当天已经占掉的种类：部分补齐（existing > 0）和刷新后保留的"已抓到"都算在内
+  const taken = new Set(
+    (
+      await prisma.dailyEncounter.findMany({
+        where: { childId, date },
+        select: { speciesId: true },
+      })
+    ).map((e) => e.speciesId)
+  );
+
   const rows = [];
   for (let slot = startSlot; slot < startSlot + count; slot++) {
     const rarity = rollRarity();
@@ -315,9 +333,14 @@ async function createEncounters(
     if (candidates.length === 0) {
       throw new ActionError("图鉴还没准备好，请家长先导入宝可梦数据");
     }
+    // 先剔掉今天已经出现过的。整档都被占光时退回不去重的池子——
+    // 出现重复也比抛错或者少给一只强（传说档只有 6 只，刷满之后真会撞到）。
+    const fresh = candidates.filter((c) => !taken.has(c.id));
+    const usable = fresh.length > 0 ? fresh : candidates;
     // 档内偏向没抓到过的（见 UNSEEN_BIAS）。稀有度分布不受影响，只影响档内挑谁。
-    const unseen = candidates.filter((c) => !ownedSpeciesIds.has(c.id));
-    const species = pick(unseen.length > 0 && Math.random() < UNSEEN_BIAS ? unseen : candidates);
+    const unseen = usable.filter((c) => !ownedSpeciesIds.has(c.id));
+    const species = pick(unseen.length > 0 && Math.random() < UNSEEN_BIAS ? unseen : usable);
+    taken.add(species.id);
 
     rows.push({
       childId,

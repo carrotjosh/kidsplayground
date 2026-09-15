@@ -42,19 +42,19 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
 
   return (
     // 同其它孩子端页面：框固定一屏，只让下面那条长长的等级列表自己滚
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-4xl lg:gap-4 lg:p-6">
-      <header className="flex shrink-0 items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+    <>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text="等级之路" /> 🏅
         </h1>
         <PointsBadge balance={balance} />
       </header>
 
       <section className="pixel-card flex shrink-0 flex-col gap-2 bg-white p-4 lg:p-5">
-        <p className="kid-text text-lg text-slate-800 lg:text-xl">
+        <p className="kid-text kid-body text-slate-800">
           <Pinyin text={`你现在是 ${progress.level} 级「${progress.title}」`} />
         </p>
-        <p className="kid-text text-base text-slate-500 lg:text-lg">
+        <p className="kid-text kid-label text-slate-500">
           {/* 分子分母都摆出来：只说"还差 300"孩子不知道这是快到了还是刚开始 */}
           <Pinyin
             text={
@@ -72,7 +72,7 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
             />
           </div>
         )}
-        <p className="kid-text text-sm text-slate-400 lg:text-base">
+        <p className="kid-text kid-label text-slate-400">
           <Pinyin text="只有完成任务和满勤奖算进等级，花掉阳光不会降级" />
         </p>
       </section>
@@ -99,13 +99,13 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
 
             <span className="min-w-0 flex-1">
               <span
-                className={`kid-text block text-base lg:text-lg ${
+                className={`kid-text block kid-body ${
                   entry.reached ? "text-slate-800" : "text-slate-500"
                 }`}
               >
                 <Pinyin text={entry.title} />
               </span>
-              <span className="kid-text block text-sm text-slate-400 lg:text-base">
+              <span className="kid-text block kid-label text-slate-400">
                 {entry.level === 1 ? (
                   <Pinyin text="一开始就有" />
                 ) : (
@@ -116,7 +116,7 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
 
             {/* 已达成的打个勾就够了；等级本身不解锁任何东西，称号就是这一级的奖励 */}
             {entry.reached && (
-              <span className="kid-text shrink-0 text-sm text-nes-green lg:text-base">
+              <span className="kid-text shrink-0 kid-label text-nes-green">
                 <Pinyin text="已达成" />
               </span>
             )}
@@ -127,10 +127,10 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
           不合并是因为叠两套门槛之后"我到底什么时候能拿到寒冰射手"就说不清了。 */}
       {gardenPath.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="pixel-text-outline kid-text text-xl text-white lg:text-2xl">
+          <h2 className="pixel-text-outline kid-text kid-body text-white">
             <Pinyin text="花园之路" /> 🌻
           </h2>
-          <p className="kid-text text-sm text-white lg:text-base">
+          <p className="kid-text kid-label text-white">
             <Pinyin
               text={`花园会跟着等级长大，但要等你把当前这一园收获掉才会变。已经收获过 ${rounds} 次`}
             />
@@ -151,13 +151,13 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
               </span>
               <span className="min-w-0 flex-1">
                 <span
-                  className={`kid-text block text-base lg:text-lg ${
+                  className={`kid-text block kid-body ${
                     entry.reached ? "text-slate-800" : "text-slate-500"
                   }`}
                 >
                   <Pinyin text={`${entry.size} 个格子`} />
                 </span>
-                <span className="kid-text block text-sm text-slate-400 lg:text-base">
+                <span className="kid-text block kid-label text-slate-400">
                   {entry.needLevel <= 1 ? (
                     <Pinyin text="一开始就有" />
                   ) : (
@@ -165,7 +165,7 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
                   )}
                 </span>
               </span>
-              <span className="kid-text shrink-0 text-sm text-slate-600 lg:text-base">
+              <span className="kid-text shrink-0 kid-label text-slate-600">
                 {entry.unlocks.length > 0 && (
                   <Pinyin
                     text={`${entry.reached ? "已解锁" : "解锁"} ${entry.unlocks
@@ -187,6 +187,6 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
           collectionNavItem(child.theme, slug),
         ]}
       />
-    </main>
+    </>
   );
 }

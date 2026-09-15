@@ -52,6 +52,7 @@ import {
 } from "../src/lib/garden";
 import {
   ensureTodayEncounters,
+  refreshEncounters,
   REGIONS,
   regionAt,
   SPECIES_CEILING_BY_LEVEL,
@@ -526,6 +527,103 @@ async function main() {
     }
     if (sawBeyondKanto) pass("满级后能遇到关都以外的宝可梦");
     else fail("高等级遇怪", "摇了 15 天还只出关都的");
+
+    // ---------- 同一天不出重复种类 ----------
+    //
+    // **这个测试的场景是刻意挑的，别"简化"成一个全新号**：
+    // 全新号上旧代码的单日撞车率只有 0.76%，跑 200 天也有 22% 的概率蒙混过关——
+    // 那样的测试看着在跑，其实拦不住回归。
+    //
+    // 真正会撞的是中后期：稀有度先摇档、再在档内挑，而"偏向没抓到过的"
+    // （UNSEEN_BIAS）会让档内候选随着收集进度不断缩小。所以这里先把
+    // 每一档都刷到**只剩 1 只没抓到**，此时旧代码的单日撞车率约 11%，
+    // 跑 120 天检出力 >99.99%。
+    console.log("\n【图鉴】同一天不会遇到两只一样的");
+    await prisma.child.update({ where: { id: child.id }, data: { level: 1 } });
+    await prisma.caught.deleteMany({ where: { childId: child.id } });
+
+    const kanto = await prisma.pokemonSpecies.findMany({
+      where: { id: { lte: REGIONS[0].ceiling } },
+    });
+    const leaveUnseen = new Set(
+      [1, 2, 3, 4].map((r) => kanto.find((sp) => sp.rarity === r)?.id).filter((id): id is number => !!id)
+    );
+    const anyBall = await prisma.ballType.findFirstOrThrow({ where: { childId: child.id } });
+    await prisma.caught.createMany({
+      data: kanto
+        .filter((sp) => !leaveUnseen.has(sp.id))
+        .map((sp) => ({
+          childId: child.id,
+          speciesId: sp.id,
+          nameZh: sp.nameZh,
+          types: sp.types,
+          rarity: sp.rarity,
+          artUrl: sp.artUrl,
+          gender: "UNKNOWN" as const,
+          ability: "自检",
+          moveName: sp.moveName,
+          movePower: sp.movePower,
+          hp: sp.hp,
+          attack: sp.attack,
+          defense: sp.defense,
+          speed: sp.speed,
+          ballTypeId: anyBall.id,
+          ballTier: anyBall.tier,
+        })),
+    });
+
+    await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+    let dupDays = 0;
+    for (let i = 0; i < 120; i++) {
+      const day = `2098-${String((i % 12) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}`;
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+      await ensureTodayEncounters(child.id, day);
+      const ids = (
+        await prisma.dailyEncounter.findMany({
+          where: { childId: child.id },
+          select: { speciesId: true },
+        })
+      ).map((e) => e.speciesId);
+      if (new Set(ids).size !== ids.length) dupDays += 1;
+    }
+    expect("120 天里出现重复的天数", dupDays, 0);
+
+    // 刷新之后也不该再遇到今天刚抓到的那只。
+    //
+    // 同样**不能只跑一次**：随便抓一只、刷一次，旧代码重新摇到那一只的概率只有
+    // 百分之一二，单次试验必过，等于没测。这里沿用上面"每档只剩 1 只没抓到"的局面，
+    // 并且专挑那只没抓到的下手——它是所在档里唯一的 unseen，
+    // 旧代码每个空位有约五成概率把它再摇出来，跑 25 天必然暴露。
+    //
+    // 刷新要花阳光（日薪 25 时第一次 5 点），先垫一笔够 25 次的。
+    await prisma.pointsLedger.create({
+      data: { childId: child.id, amount: 500, reason: "自检垫款", type: "MANUAL_ADJUST" },
+    });
+    let refreshDups = 0;
+    for (let i = 0; i < 25; i++) {
+      const day = `2097-${String((i % 12) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}`;
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+      await ensureTodayEncounters(child.id, day);
+
+      const encs = await prisma.dailyEncounter.findMany({
+        where: { childId: child.id },
+        orderBy: { slot: "asc" },
+      });
+      // 优先挑那只"档内唯一没抓到过的"，它被重复摇出来的概率最高
+      const target = encs.find((e) => leaveUnseen.has(e.speciesId)) ?? encs[0];
+      await prisma.dailyEncounter.update({
+        where: { id: target.id },
+        data: { status: "CAUGHT" },
+      });
+
+      await refreshEncounters(child.id, day);
+      const fresh2 = await prisma.dailyEncounter.findMany({
+        where: { childId: child.id, date: dateStringToUtcDate(day), status: { not: "CAUGHT" } },
+        select: { speciesId: true },
+      });
+      if (fresh2.some((e) => e.speciesId === target.speciesId)) refreshDups += 1;
+    }
+    expect("25 次刷新里又摇出已抓到那只的次数", refreshDups, 0);
 
   } finally {
     // 清理本身失败也不能静默：兜底再扫一次，还失败就把话说清楚，别让人以为库是干净的

@@ -36,14 +36,14 @@ export function ShopCard({
       </div>
 
       <div className="flex flex-1 items-center">
-        <p className="kid-text text-lg text-slate-800 lg:text-xl">
+        <p className="kid-text kid-body text-slate-800">
           <Pinyin text={title} />
         </p>
       </div>
 
       <p className="pixel-font text-[10px] text-nes-brown lg:text-xs">{cost} ☀️</p>
       {/* 没有备注也保留这一行的高度，一排卡片的按钮才不会一高一低 */}
-      <p className="min-h-4 text-xs text-slate-400">{note ?? " "}</p>
+      <p className="min-h-4 kid-note text-slate-400">{note ?? " "}</p>
 
       {children}
     </div>

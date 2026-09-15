@@ -21,14 +21,14 @@ function TaskBody({ task }: { task: Task }) {
   return (
     <div className="flex flex-col items-center gap-1 text-center">
       <span className="text-5xl leading-none lg:text-6xl">{task.emoji ?? "📌"}</span>
-      <p className="kid-text text-2xl leading-tight text-slate-800 lg:text-3xl">
+      <p className="kid-text kid-title leading-tight text-slate-800">
         <Pinyin text={subject} />
       </p>
       {task.amount !== null && (
         <p className="kid-text flex items-baseline gap-1 leading-tight text-slate-800">
           <span className="text-4xl lg:text-5xl">{task.amount}</span>
           {task.unit && (
-            <span className="text-2xl lg:text-3xl">
+            <span className="kid-title">
               <Pinyin text={task.unit} />
             </span>
           )}
@@ -42,8 +42,8 @@ function TaskBody({ task }: { task: Task }) {
 function RewardBanner({ points }: { points: number }) {
   return (
     <div className="pixel-border flex w-full items-center justify-center gap-1 bg-nes-yellow py-2">
-      <span className="pixel-font text-base text-nes-black lg:text-lg">+{points}</span>
-      <span className="text-xl lg:text-2xl">☀️</span>
+      <span className="pixel-font kid-label text-nes-black">+{points}</span>
+      <span className="kid-title">☀️</span>
     </div>
   );
 }
@@ -74,14 +74,14 @@ export function CompactTaskCard({
 
       {/* min-w-0 让长任务名在这里换行/截断，而不是把右边的按钮挤变形 */}
       <div className="flex min-w-0 flex-1 flex-col justify-center leading-tight">
-        <p className="kid-text truncate text-base text-slate-800 lg:text-xl">
+        <p className="kid-text truncate kid-label text-slate-800">
           <Pinyin text={subject} />
         </p>
         {task.amount !== null && (
           <p className="kid-text flex items-baseline gap-1 text-slate-800">
-            <span className="text-2xl lg:text-3xl">{task.amount}</span>
+            <span className="kid-title">{task.amount}</span>
             {task.unit && (
-              <span className="text-base lg:text-lg">
+              <span className="kid-body">
                 <Pinyin text={task.unit} />
               </span>
             )}
@@ -92,22 +92,22 @@ export function CompactTaskCard({
       <div className="flex w-24 shrink-0 flex-col items-stretch gap-1 lg:w-28">
         <div className="pixel-border flex items-center justify-center gap-1 bg-nes-yellow py-0.5">
           <span className="pixel-font text-[10px] text-nes-black lg:text-xs">+{task.points}</span>
-          <span className="text-sm lg:text-base">☀️</span>
+          <span className="kid-label">☀️</span>
         </div>
 
         {done ? (
-          <span className="pixel-border kid-text flex items-center justify-center bg-nes-green py-1 text-sm text-white lg:text-base">
+          <span className="pixel-border kid-text flex items-center justify-center bg-nes-green py-1 kid-label text-white">
             <Pinyin text="完成" />
           </span>
         ) : pending ? (
-          <span className="pixel-border kid-text flex items-center justify-center bg-slate-400 py-1 text-xs text-white lg:text-sm">
+          <span className="pixel-border kid-text flex items-center justify-center bg-slate-400 py-1 kid-label text-white">
             <Pinyin text="等检查" />
           </span>
         ) : (
           <form action={submitAction}>
             <button
               type="submit"
-              className="pixel-btn kid-text w-full bg-nes-red py-1 text-sm text-white lg:text-base"
+              className="pixel-btn kid-text w-full bg-nes-red py-1 kid-label text-white"
             >
               <Pinyin text="做完了" />
             </button>
@@ -138,18 +138,18 @@ export function TaskCard({
       <RewardBanner points={task.points} />
 
       {done ? (
-        <span className="pixel-border kid-text flex w-full items-center justify-center bg-nes-green py-3 text-xl text-white lg:text-2xl">
+        <span className="pixel-border kid-text flex w-full items-center justify-center bg-nes-green py-3 kid-body text-white">
           <Pinyin text="完成" /> ✅
         </span>
       ) : pending ? (
-        <span className="pixel-border kid-text flex w-full items-center justify-center bg-slate-400 py-3 text-xl text-white lg:text-2xl">
+        <span className="pixel-border kid-text flex w-full items-center justify-center bg-slate-400 py-3 kid-body text-white">
           <Pinyin text="等爸爸妈妈检查" />
         </span>
       ) : (
         <form action={submitAction} className="w-full">
           <button
             type="submit"
-            className="pixel-btn kid-text w-full bg-nes-red py-3 text-xl text-white lg:text-2xl"
+            className="pixel-btn kid-text w-full bg-nes-red py-3 kid-body text-white"
           >
             <Pinyin text="我做完了" />
           </button>

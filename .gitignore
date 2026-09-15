@@ -44,3 +44,6 @@ next-env.d.ts
 
 # 部署时在服务器上生成的密钥文件，不进仓库
 deploy/duckdns.env
+
+# 生成的手册：由 scripts/make-manual-ppt.py 产出，不进版本库
+*.pptx

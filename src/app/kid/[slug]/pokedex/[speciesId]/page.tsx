@@ -59,12 +59,12 @@ export default async function SpeciesDetailPage({
   return (
     // 横屏平板上分两栏：左边立绘和数值，右边克制、进化、我抓到的。
     // 一栏竖着排的话这几块加起来必然超过一屏，而这一页正是孩子会盯着看的地方。
-    <main className="pixel-sky-bg mx-auto flex h-dvh w-full max-w-xl flex-col gap-3 overflow-hidden p-4 md:max-w-3xl lg:max-w-5xl lg:gap-4 lg:p-6">
+    <>
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="pixel-text-outline kid-text text-2xl text-white lg:text-4xl">
+        <h1 className="pixel-text-outline kid-text kid-title text-white">
           <Pinyin text={species.nameZh} />
         </h1>
-        <span className="pixel-card kid-text bg-white px-3 py-1.5 text-base text-slate-600 lg:text-lg">
+        <span className="pixel-card kid-text bg-white px-3 py-1.5 kid-label text-slate-600">
           No.{species.id} · <Pinyin text={RARITY_LABELS[species.rarity]} />
         </span>
       </header>
@@ -85,7 +85,7 @@ export default async function SpeciesDetailPage({
             {species.types.map((t) => (
               <span
                 key={t}
-                className="pixel-border kid-text px-3 py-1 text-base text-white lg:text-lg"
+                className="pixel-border kid-text px-3 py-1 kid-label text-white"
                 style={{ backgroundColor: typeColor(t) }}
               >
                 <Pinyin text={typeLabel(t)} />
@@ -102,14 +102,14 @@ export default async function SpeciesDetailPage({
               ["速度", species.speed],
             ].map(([label, value]) => (
               <div key={String(label)} className="border-2 border-slate-200 p-1.5">
-                <dt className="kid-text text-xs text-slate-500 lg:text-sm">
+                <dt className="kid-text kid-label text-slate-500">
                   <Pinyin text={String(label)} />
                 </dt>
-                <dd className="pixel-font text-base text-slate-800 lg:text-lg">{value}</dd>
+                <dd className="pixel-font kid-label text-slate-800">{value}</dd>
               </div>
             ))}
           </dl>
-          <p className="kid-text text-sm text-slate-500 lg:text-base">
+          <p className="kid-text kid-label text-slate-500">
             <Pinyin
               text={`招牌技能：${species.moveName}（威力 ${species.movePower}）· 特性：${species.abilities.join("、")}`}
             />
@@ -121,7 +121,7 @@ export default async function SpeciesDetailPage({
       <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto">
       {/* 怕什么。这是这一页最有嚼头的部分，位置排在进化前面 */}
       <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
-        <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
+        <h2 className="kid-text kid-body text-slate-800">
           <Pinyin text="它怕什么" /> ⚔️
         </h2>
         {weak.length === 0 ? (
@@ -133,7 +133,7 @@ export default async function SpeciesDetailPage({
             {weak.map((m) => (
               <span
                 key={m.type}
-                className="pixel-border kid-text flex items-center gap-1.5 px-3 py-1.5 text-base text-white lg:text-lg"
+                className="pixel-border kid-text flex items-center gap-1.5 px-3 py-1.5 kid-label text-white"
                 style={{ backgroundColor: typeColor(m.type) }}
               >
                 <Pinyin text={`${m.label}·${multiplierLabel(m.multiplier)}`} />
@@ -144,14 +144,14 @@ export default async function SpeciesDetailPage({
 
         {resist.length > 0 && (
           <>
-            <h2 className="kid-text mt-1 text-lg text-slate-800 lg:text-xl">
+            <h2 className="kid-text mt-1 kid-body text-slate-800">
               <Pinyin text="它不怕什么" /> 🛡️
             </h2>
             <div className="flex flex-wrap gap-2">
               {resist.map((m) => (
                 <span
                   key={m.type}
-                  className="kid-text flex items-center gap-1.5 border-2 border-slate-200 px-3 py-1.5 text-base text-slate-600 lg:text-lg"
+                  className="kid-text flex items-center gap-1.5 border-2 border-slate-200 px-3 py-1.5 kid-label text-slate-600"
                 >
                   <span
                     className="h-3 w-3 shrink-0 border border-nes-black"
@@ -163,7 +163,7 @@ export default async function SpeciesDetailPage({
             </div>
           </>
         )}
-        <p className="kid-text text-sm text-slate-400 lg:text-base">
+        <p className="kid-text kid-label text-slate-400">
           <Pinyin text="有两个属性的宝可梦，两边的效果要乘起来，所以会有「非常怕」" />
         </p>
       </section>
@@ -171,13 +171,13 @@ export default async function SpeciesDetailPage({
       {/* 进化路径。按层横排，伊布那种一变多的也画得对 */}
       {levels.length > 1 && (
         <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
-          <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
+          <h2 className="kid-text kid-body text-slate-800">
             <Pinyin text="进化路线" /> 🔄
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             {levels.map((level, i) => (
               <div key={i} className="flex items-center gap-2">
-                {i > 0 && <span className="text-2xl text-slate-400">→</span>}
+                {i > 0 && <span className="kid-title text-slate-400">→</span>}
                 <div className="flex flex-wrap gap-2">
                   {level.map((node) => (
                     <Link
@@ -196,7 +196,7 @@ export default async function SpeciesDetailPage({
                         height={64}
                         unoptimized
                       />
-                      <span className="kid-text truncate text-xs text-slate-700 lg:text-sm">
+                      <span className="kid-text truncate kid-label text-slate-700">
                         <Pinyin text={node.nameZh} />
                       </span>
                     </Link>
@@ -210,7 +210,7 @@ export default async function SpeciesDetailPage({
 
       {/* 我抓到的这几只。每只的性别/特性/闪光都是独立随机的，所以要分开列 */}
       <section className="pixel-card flex shrink-0 flex-col gap-3 bg-white p-4 lg:p-5">
-        <h2 className="kid-text text-lg text-slate-800 lg:text-xl">
+        <h2 className="kid-text kid-body text-slate-800">
           <Pinyin text={`我抓到的（${mine.length} / ${goal} 只算收集完成）`} /> 🎒
         </h2>
         {mine.length === 0 ? (
@@ -222,7 +222,7 @@ export default async function SpeciesDetailPage({
             {mine.map((c) => (
               <li
                 key={c.id}
-                className="kid-text flex flex-wrap gap-x-3 border-2 border-slate-200 px-3 py-2 text-sm text-slate-600 lg:text-base"
+                className="kid-text flex flex-wrap gap-x-3 border-2 border-slate-200 px-3 py-2 kid-label text-slate-600"
               >
                 {c.isShiny && <span className="text-nes-red">✨ 闪光</span>}
                 <span>
@@ -249,6 +249,6 @@ export default async function SpeciesDetailPage({
           { href: `/kid/${slug}`, label: "今天我要做的事", emoji: "📋", tone: "green" },
         ]}
       />
-    </main>
+    </>
   );
 }
