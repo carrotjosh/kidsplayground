@@ -67,11 +67,18 @@ function stripComments(src: string): string {
     .replace(/(?<!:)\/\/.*$/gm, "");
 }
 
+/**
+ * 要守规矩的文件：page.tsx 和 loading.tsx。
+ *
+ * loading.tsx 也得算——它渲染在同一个 layout 的 <main> 里，约束一模一样
+ * （不能自带容器、不能有 <main>、必须有伸缩区）。只扫 page.tsx 的话，
+ * 骨架屏把底部导航顶出屏幕也没人拦。
+ */
 function pages(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) return pages(full);
-    return name === "page.tsx" ? [full] : [];
+    return name === "page.tsx" || name === "loading.tsx" ? [full] : [];
   });
 }
 
