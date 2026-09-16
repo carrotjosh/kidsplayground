@@ -166,6 +166,22 @@ export async function submitDailyTaskForReview(dailyTaskId: string, childId: str
   if (task.status === TaskStatus.CANCELLED) {
     throw new ActionError("这个任务已经取消了");
   }
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { autoApprove: true },
+  });
+
+  // 家长开了自动审批：跳过待审核，直接批准并发阳光。
+  // 走的是同一个 approveDailyTask，所以幂等性、流水类型、撤销入口全都一致——
+  // 家长事后照样能在「打卡记录」里撤销。
+  //
+  // markSubmitted 不能省：submittedAt 记的是**孩子自己点「做完了」**的时刻，
+  // 自觉性面板全靠它。自动审批只是省掉家长那一下，孩子确实是自己点的，
+  // 不写的话面板会把这些天算成"没有自觉做"，一开自动审批自觉率就掉到 0。
+  if (child?.autoApprove) {
+    return approveDailyTask(dailyTaskId, childId, { markSubmitted: true });
+  }
+
   return prisma.dailyTask.update({
     where: { id: dailyTaskId },
     // submittedAt 记的是**孩子自己点"我完成了"**的时刻，和家长批准的 completedAt 是两回事。
@@ -177,7 +193,12 @@ export async function submitDailyTaskForReview(dailyTaskId: string, childId: str
 
 /** 家长批准打卡并发放阳光。兼容两种入口：孩子已提交待审核（PENDING_REVIEW）家长审核通过，
  *  或家长直接对 PENDING 的任务"补打卡"跳过审核直接批准。对已 DONE 的重复调用安全（不重复发）。 */
-export async function approveDailyTask(dailyTaskId: string, childId: string) {
+export async function approveDailyTask(
+  dailyTaskId: string,
+  childId: string,
+  /** 自动审批走这条路时要一并记下"孩子自己点的"，见 submitDailyTaskForReview */
+  opts?: { markSubmitted?: boolean }
+) {
   return prisma.$transaction(async (tx) => {
     const task = await tx.dailyTask.findUnique({ where: { id: dailyTaskId } });
     if (!task || task.childId !== childId) {
@@ -193,7 +214,11 @@ export async function approveDailyTask(dailyTaskId: string, childId: string) {
     const [updatedTask] = await Promise.all([
       tx.dailyTask.update({
         where: { id: dailyTaskId },
-        data: { status: TaskStatus.DONE, completedAt: new Date() },
+        data: {
+          status: TaskStatus.DONE,
+          completedAt: new Date(),
+          ...(opts?.markSubmitted ? { submittedAt: new Date() } : {}),
+        },
       }),
       tx.pointsLedger.create({
         data: {

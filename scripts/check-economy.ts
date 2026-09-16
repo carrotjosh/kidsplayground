@@ -16,6 +16,7 @@ import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
+import { submitDailyTaskForReview } from "../src/lib/tasks";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
@@ -368,6 +369,74 @@ async function main() {
     ]);
     expect("当天新种的那棵被吃", freshAfter.status, "EATEN");
     expect("养了 5 天的那棵还活着", oldAfter.status, "ALIVE");
+
+    // ---------- 自动审批 ----------
+    //
+    // 重点盯 submittedAt。自觉性面板（lib/discipline.ts）靠它区分
+    // "孩子当天自己点的" 和 "家长事后补批的"。自动审批只是省掉家长那一下，
+    // 孩子确实是自己点的——漏写的话，一开自动审批自觉率就掉到 0，
+    // 而这在界面上完全看不出来（数字就是会慢慢变难看而已）。
+    console.log("\n【自动审批】开了之后直接到账，且仍记为孩子自己提交");
+    await prisma.child.update({ where: { id: child.id }, data: { theme: "POKEDEX" } });
+
+    const mkTask = (title: string, points: number) =>
+      prisma.dailyTask.create({
+        data: {
+          childId: child.id,
+          title,
+          points,
+          date: dateStringToUtcDate(today),
+          source: "ADHOC",
+          status: "PENDING",
+        },
+      });
+
+    // 关着：走待审核，不发阳光
+    await prisma.child.update({ where: { id: child.id }, data: { autoApprove: false } });
+    const t1 = await mkTask("自检-要审批", 7);
+    const before = (await prisma.pointsLedger.aggregate({
+      where: { childId: child.id }, _sum: { amount: true },
+    }))._sum.amount ?? 0;
+    const r1 = await submitDailyTaskForReview(t1.id, child.id);
+    expect("关着时进待审核", r1.status, "PENDING_REVIEW");
+    expect(
+      "关着时不发阳光",
+      ((await prisma.pointsLedger.aggregate({ where: { childId: child.id }, _sum: { amount: true } }))._sum.amount ?? 0) - before,
+      0
+    );
+
+    // 开着：直接 DONE 并发阳光
+    await prisma.child.update({ where: { id: child.id }, data: { autoApprove: true } });
+    const t2 = await mkTask("自检-自动批", 9);
+    const r2 = await submitDailyTaskForReview(t2.id, child.id);
+    expect("开着时直接完成", r2.status, "DONE");
+    expect(
+      "开着时阳光立刻到账",
+      ((await prisma.pointsLedger.aggregate({ where: { childId: child.id }, _sum: { amount: true } }))._sum.amount ?? 0) - before,
+      9
+    );
+    const t2row = await prisma.dailyTask.findUniqueOrThrow({ where: { id: t2.id } });
+    if (t2row.submittedAt) pass("自动审批仍然记下 submittedAt（自觉性面板不会被清零）");
+    else fail("submittedAt", "自动审批没记，自觉率会掉到 0");
+
+    // 重复点不重复发
+    await submitDailyTaskForReview(t2.id, child.id);
+    expect(
+      "连点两次也只发一次",
+      ((await prisma.pointsLedger.aggregate({ where: { childId: child.id }, _sum: { amount: true } }))._sum.amount ?? 0) - before,
+      9
+    );
+
+    // 开开关不会自动放行已经压着的那条
+    expect(
+      "开启前就在待审核的那条不受影响",
+      (await prisma.dailyTask.findUniqueOrThrow({ where: { id: t1.id } })).status,
+      "PENDING_REVIEW"
+    );
+
+    await prisma.pointsLedger.deleteMany({ where: { childId: child.id, dailyTaskId: t2.id } });
+    await prisma.dailyTask.deleteMany({ where: { id: { in: [t1.id, t2.id] } } });
+    await prisma.child.update({ where: { id: child.id }, data: { autoApprove: false } });
 
     // ---------- 惩罚开关：关掉之后游标仍然要走 ----------
     //

@@ -77,6 +77,11 @@ model Child {
   // 攒下来的所有天数一次性补判，一口气跑掉一串宝可梦——那比不关还糟。
   penaltyEnabled Boolean @default(true)
 
+  // 孩子点「做完了」之后要不要家长过一道手。
+  // 默认 false（要审批）：审批本身是亲子之间的一次对话，不该悄悄取消。
+  // 但孩子稳定之后，家长每天点十几次确认是纯负担，那时可以关掉。
+  autoApprove Boolean @default(false)
+
   // 每日达标线：当天已批准的任务加起来达到这么多阳光，这一天就算"打卡成功"（日历上点亮、计入满勤）。
   // 默认 20 配合默认任务的每天满分 25——漏掉最小的那项仍然算达标（见 lib/bootstrap.ts）。
   dailyGoalPoints Int @default(20)

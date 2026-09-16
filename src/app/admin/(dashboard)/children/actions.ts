@@ -91,6 +91,22 @@ export async function setThemeAction(theme: KidTheme) {
  * 逐天走完并推进游标，只是跳过惩罚。所以关一个月再打开，不会一次性补罚，
  * 那段日子就是真的不算了。
  */
+/**
+ * 开关自动审批。孩子点「做完了」是直接到账，还是要家长过一道手。
+ *
+ * 只影响**之后**的提交。已经躺在「待审核」里的那些不会被自动放行——
+ * 那些是孩子在"需要审批"的约定下点的，家长仍然该看一眼。
+ */
+export async function setAutoApproveAction(enabled: boolean) {
+  const session = await requireParentSession();
+  const child = await getActiveChild();
+  await prisma.child.updateMany({
+    where: { id: child.id, userId: effectiveUserId(session) },
+    data: { autoApprove: enabled },
+  });
+  revalidateEverything();
+}
+
 export async function setPenaltyEnabledAction(enabled: boolean) {
   const session = await requireParentSession();
   const child = await getActiveChild();

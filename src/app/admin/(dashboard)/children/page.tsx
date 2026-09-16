@@ -1,6 +1,9 @@
+import { TaskStatus } from "@/generated/prisma/client";
 import { getActiveChild, listChildren } from "@/lib/child";
+import { prisma } from "@/lib/db";
 import { requestOrigin } from "@/lib/origin";
 
+import { AutoApproveToggle } from "./AutoApproveToggle";
 import { ChildForm } from "./ChildForm";
 import { ChildRow } from "./ChildRow";
 import { DailyGoalForm } from "./DailyGoalForm";
@@ -15,6 +18,12 @@ export default async function ChildrenAdminPage() {
   // 一个孩子都还没有时 getActiveChild 会抛错，所以这一页（也只有这一页）要能在没有孩子的
   // 情况下渲染——新注册的账号第一件事就是落到这里建档。
   const active = children.length > 0 ? await getActiveChild() : null;
+  // 开了自动审批时要告诉家长"还压着几条待审核"——那些不会被自动放行
+  const pendingReviewCount = active
+    ? await prisma.dailyTask.count({
+        where: { childId: active.id, status: TaskStatus.PENDING_REVIEW },
+      })
+    : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,6 +39,13 @@ export default async function ChildrenAdminPage() {
 
       {active && <ThemePicker current={active.theme} childName={active.name} />}
       {active && <DailyGoalForm childName={active.name} current={active.dailyGoalPoints} />}
+      {active && (
+        <AutoApproveToggle
+          enabled={active.autoApprove}
+          childName={active.name}
+          pendingCount={pendingReviewCount}
+        />
+      )}
       {active && (
         <PenaltyToggle
           enabled={active.penaltyEnabled}
