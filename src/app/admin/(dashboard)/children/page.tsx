@@ -4,6 +4,7 @@ import { requestOrigin } from "@/lib/origin";
 import { ChildForm } from "./ChildForm";
 import { ChildRow } from "./ChildRow";
 import { DailyGoalForm } from "./DailyGoalForm";
+import { PenaltyToggle } from "./PenaltyToggle";
 import { ThemePicker } from "./ThemePicker";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,13 @@ export default async function ChildrenAdminPage() {
 
       {active && <ThemePicker current={active.theme} childName={active.name} />}
       {active && <DailyGoalForm childName={active.name} current={active.dailyGoalPoints} />}
+      {active && (
+        <PenaltyToggle
+          enabled={active.penaltyEnabled}
+          childName={active.name}
+          theme={active.theme}
+        />
+      )}
 
       <div className="flex flex-col gap-3">
         {children.map((child) => (

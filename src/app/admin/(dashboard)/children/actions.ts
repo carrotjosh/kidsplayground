@@ -84,6 +84,24 @@ export async function setThemeAction(theme: KidTheme) {
   revalidateEverything();
 }
 
+/**
+ * 开关"任务没做完的后果"（图鉴宝可梦离家出走 / 花园植物被吃）。
+ *
+ * 关掉不会冻结结算——settlePokedexForChild / settleGardenForChild 照常
+ * 逐天走完并推进游标，只是跳过惩罚。所以关一个月再打开，不会一次性补罚，
+ * 那段日子就是真的不算了。
+ */
+export async function setPenaltyEnabledAction(enabled: boolean) {
+  const session = await requireParentSession();
+  const child = await getActiveChild();
+  // 带 childId + userId 双条件，挡住越权改别人家孩子的设置
+  await prisma.child.updateMany({
+    where: { id: child.id, userId: effectiveUserId(session) },
+    data: { penaltyEnabled: enabled },
+  });
+  revalidateEverything();
+}
+
 export async function setDailyGoalAction(
   _prevState: string | null,
   formData: FormData
