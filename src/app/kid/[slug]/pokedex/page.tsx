@@ -113,7 +113,11 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
       )}
 
       {/* 收集进度 */}
-      <section className="pixel-card flex shrink-0 flex-col gap-2 bg-white p-4 lg:p-5">
+      {/* 收集进度。窄屏下**必须压扁**：这一块是 shrink-0，而 375px 下每一行都会
+          换行、拼音又让行高翻倍，四段内容加起来能吃掉 320px，
+          把下面 flex-1 的「今天遇到了」挤成一条缝（真机上只剩 60px，
+          宝可梦露出个头顶）。孩子在手机上真正要动手的是遇怪那块，不是统计。 */}
+      <section className="pixel-card flex shrink-0 flex-col gap-1.5 bg-white p-3 sm:gap-2 sm:p-4 lg:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           {/* 分母是**当前地区**的数量，不是全部 386。不写清楚"关都地区"的话，
               看到 151 会以为一共就这么多——那正好抹掉了分批解锁想制造的期待感 */}
@@ -137,21 +141,34 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
             而按等级分批放出来的全部意义就在于"后面还有" */}
         {ceiling < REGIONS[REGIONS.length - 1].ceiling && (
           <p className="kid-text kid-label text-slate-500">
-            <Pinyin
-              text={`升到 ${level + 1} 级再开放 ${speciesCeilingForLevel(level + 1) - ceiling} 只，后面一共还有 ${REGIONS[REGIONS.length - 1].ceiling - ceiling} 只没见过面`}
-            />{" "}
+            {/* 拆成两句：窄屏只留前半句。后半句"后面一共还有 N 只"在 375px 下
+                要多占一整行（约 46px），而前半句已经把"还有下一批"说清楚了 */}
+            <Pinyin text={`升到 ${level + 1} 级再开放 ${speciesCeilingForLevel(level + 1) - ceiling} 只`} />
+            <span className="hidden sm:inline">
+              <Pinyin
+                text={`，后面一共还有 ${REGIONS[REGIONS.length - 1].ceiling - ceiling} 只没见过面`}
+              />
+            </span>{" "}
             🌏
           </p>
         )}
 
         {/* 各稀有度收集了几只 */}
-        <div className="flex flex-wrap gap-2">
+        {/* 各稀有度收集了几只。窄屏一行放下四个：文字标签（传说/稀有/少见/普通）
+            藏起来只留星和数字，否则四个格子要占两行、白白多 34px */}
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {[4, 3, 2, 1].map((r) => (
             <span
               key={r}
-              className="pixel-border kid-text bg-slate-100 px-2 py-1 kid-label text-slate-700"
+              // 字号统一用 kid-note：星星加一个数字，这一档够读。
+              // 不能写 sm:kid-label —— kid-* 是 globals.css 里的普通类、不是
+              // Tailwind 工具类，加断点前缀不生成任何规则；而且两个类都设
+              // font-size，同时挂上去谁赢取决于 CSS 源码顺序，不是 class 顺序。
+              className="pixel-border kid-text kid-note bg-slate-100 px-1.5 py-0.5 text-slate-700 sm:px-2 sm:py-1"
             >
-              {"★".repeat(r)} {RARITY_LABELS[r]} {owned.filter((c) => c.rarity === r).length}
+              {"★".repeat(r)}
+              <span className="hidden sm:inline"> {RARITY_LABELS[r]}</span>{" "}
+              {owned.filter((c) => c.rarity === r).length}
             </span>
           ))}
         </div>

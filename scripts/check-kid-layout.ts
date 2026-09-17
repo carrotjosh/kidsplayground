@@ -3,7 +3,8 @@
  *
  * 用法：npm run check:layout
  *
- * 守三条只在真机上才看得出来、tsc / eslint / next build 全都发现不了的规则。
+ * 守五条只在真机上才看得出来、tsc / eslint / next build 全都发现不了的规则。
+ * （④⑤ 的说明写在各自那一段代码上面。）
  *
  * ① **一屏容器归 layout.tsx 管**，页面自己不许再写 h-dvh / min-h-screen。
  *    以前九个页面各写各的，飘出了四种不同的宽度（max-w-5xl / 6xl / 7xl / 无），
@@ -189,6 +190,31 @@ for (const file of pages(KID_ROOT).sort()) {
     console.log(`  ✅ ${label}`);
   }
 }
+
+// ---- ⑤ kid-* 不能加断点前缀 ------------------------------------------------
+//
+// kid-title / kid-body / kid-label / kid-note 是 globals.css 里的**普通 CSS 类**，
+// 不在 @layer utilities 里，所以 `sm:kid-label` 这种写法**不生成任何规则**——
+// 静默失效，tsc / eslint / next build 全都发现不了。
+// 更坏的是两个档一起挂（`kid-note sm:kid-label`）时，两个类都设 font-size，
+// 谁生效取决于 CSS 源码顺序而不是 class 里的顺序，看起来像随机的。
+//
+// 真写过一次（图鉴页的稀有度角标）。要真能按断点切档，得先把它们
+// 改成 Tailwind v4 的 @utility。
+console.log("\n⑤ kid-* 字号类没有被加断点前缀（加了不生效）：\n");
+const PREFIXED = /\b(sm|md|lg|xl|2xl):kid-(title|body|label|note)\b/g;
+let prefixHits = 0;
+for (const file of typeScoped) {
+  const src = stripComments(readFileSync(file, "utf8"));
+  const label = file.replace(`${KID_ROOT}/`, "").replace("src/components/", "components/");
+  const hits = [...src.matchAll(PREFIXED)];
+  if (hits.length === 0) continue;
+  prefixHits += hits.length;
+  failures += 1;
+  const lines = hits.map((h) => src.slice(0, h.index).split("\n").length);
+  console.log(`  ❌ ${label} —— 第 ${lines.join("、")} 行用了 ${hits[0][0]}，这条规则根本不会生成`);
+}
+if (prefixHits === 0) console.log("  ✅ 没有");
 
 if (failures > 0) {
   console.log(`\n❌ ${failures} 处有问题`);
