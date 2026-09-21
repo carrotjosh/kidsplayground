@@ -20,6 +20,7 @@ import { submitDailyTaskForReview } from "../src/lib/tasks";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
+  AMOUNT_MULTIPLIERS,
   dailyEarnRate,
   dailyEarnRateFromTemplates,
   duplicateRefund,
@@ -144,7 +145,15 @@ async function main() {
   // 否则等于在孩子毫不知情的情况下改了他的奖励。
   console.log("\n【派生金额】日薪 25 时必须和改造前的硬编码完全一致");
   expect("月度满勤奖", monthlyBonusPoints(25), 150);
-  expect("图鉴里程碑", pokedexMilestoneBonus(25), 100);
+  // 这一条**故意偏离**改造前的硬编码 100，是本轮唯一的例外。
+  //
+  // 原来是 4 天工资。模拟 3000 次拿下一个里程碑的真实成本发现，前 11 个里程碑
+  // （差不多第一年多）扔球一路净赚——图鉴从阳光的消耗口变成了产出口，
+  // 直接踩穿"扔球不能赚钱"那条不变量。真实案例：蓬蓬头 10 天做任务挣 172，
+  // 一次里程碑就发了 192。
+  //
+  // 1.5 是倒推的：里程碑摊到每个球是 M × p̄ / 8，要 ≤ 球价 8 × 0.5，解出 M ≤ 87。
+  expect("图鉴里程碑（从 4 天工资降到 1.5，见下面的不变量）", pokedexMilestoneBonus(25), 38);
   expect(
     "单种收集完成",
     [1, 2, 3, 4].map((r) => speciesMasteryBonus(25, r)),
@@ -211,6 +220,28 @@ async function main() {
     await prisma.ballType.update({ where: { id: poke.id }, data: { cost: 1 } });
     expectFinding((await auditEconomy(child.id)).findings, "能赚阳光", "球价 1 → 报出「扔球能赚阳光」");
     await prisma.ballType.update({ where: { id: poke.id }, data: { cost: poke.cost } });
+
+    // (1b) 里程碑太高 → 扔球刷里程碑就能赚阳光
+    //
+    // 这条是补上去的：原来"扔球不能赚钱"只校验重复返还，而前期几乎没有重复
+    // （抓到的都是新种），真正踩穿它的是里程碑。加之前那一版体检对
+    // 4 天工资的里程碑一声不吭。
+    const okMilestone = await auditEconomy(child.id);
+    if (okMilestone.findings.some((f) => f.title.includes("里程碑太高"))) {
+      fail("当前里程碑值", "被误报成太高了");
+    } else {
+      pass("当前里程碑（1.5 天工资）不会让扔球变成赚钱手段");
+    }
+
+    // 把它调回原来的 4 天工资，必须报出来
+    const origMilestone = AMOUNT_MULTIPLIERS.pokedexMilestone;
+    (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = 4;
+    expectFinding(
+      (await auditEconomy(child.id)).findings,
+      "里程碑太高",
+      "里程碑调回 4 天工资 → 报出「刷里程碑能赚阳光」"
+    );
+    (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = origMilestone;
 
     // (2) 植物删到 3 种 → 4×4 的花园永远集不齐
     await prisma.child.update({ where: { id: child.id }, data: { theme: "GARDEN" } });

@@ -184,7 +184,7 @@ export function regionAt(ceiling: number): string {
   return (REGIONS.find((r) => ceiling <= r.ceiling) ?? REGIONS[REGIONS.length - 1]).name;
 }
 
-/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus（4 天工资）。 */
+/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus。 */
 export const POKEDEX_MILESTONE_STEP = 8;
 
 /**
@@ -214,6 +214,23 @@ export type ThrowResult =
 export type PokedexEvent =
   | { date: string; outcome: "FLED_AWAY"; nameZh: string }
   | { date: string; outcome: "NOTHING_TO_LOSE" };
+
+/**
+ * 某种球的**加权平均抓取率**（连败 0 次时）：按遇怪表的稀有度分布加权。
+ *
+ * 体检用它把"里程碑奖励"摊到每个球上。前期几乎每只抓到的都是新种，
+ * 所以 8 / p̄ 就是凑够一个里程碑要扔的球数，M × p̄ / 8 就是每个球的期望里程碑收入。
+ * 不算这一项的话，"扔球不能赚钱"那条不变量只盯着重复返还——
+ * 而真正把它踩穿的是里程碑（重复返还前期几乎为零，因为抓到的都是新的）。
+ */
+export function expectedCatchRate(catchPower: number): number {
+  const total = Object.values(ENCOUNTER_WEIGHTS).reduce((a, b) => a + b, 0);
+  return Object.entries(ENCOUNTER_WEIGHTS).reduce(
+    (sum, [rarity, weight]) =>
+      sum + (weight / total) * catchProbability(Number(rarity), catchPower, 0),
+    0
+  );
+}
 
 /** 按遇怪表随机挑一档稀有度。导出是为了能跑大样本模拟验证。 */
 export function rollRarity(): number {

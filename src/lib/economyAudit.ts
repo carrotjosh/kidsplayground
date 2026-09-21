@@ -13,7 +13,11 @@ import {
   type PriceBandKey,
 } from "@/lib/economy";
 import { gardenSetSize, gardenSize } from "@/lib/garden";
-import { catchProbability } from "@/lib/pokedex";
+import {
+  catchProbability,
+  expectedCatchRate,
+  POKEDEX_MILESTONE_STEP,
+} from "@/lib/pokedex";
 
 /**
  * 经济体检：把家长可改的那些价格换算成「几天工资」，和设计区间对一下，并校验几条硬不变量。
@@ -191,6 +195,38 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       }
     }
   }
+  // 里程碑也是扔球带来的收入，必须一起算进这条不变量。
+  //
+  // 漏过一次：原来只校验"重复返还 × 抓取率 vs 球价"，而**前期几乎没有重复**
+  // （抓到的都是新种），真正把不变量踩穿的是里程碑。当时 pokedexMilestone 是
+  // 4 天工资，模拟下来前 11 个里程碑扔球全程净赚——图鉴从消耗口变成了产出口，
+  // 而体检一声不吭。
+  //
+  // 摊法：前期每只抓到的都算新种，所以 STEP / p̄ 就是凑够一个里程碑要扔的球数
+  // （p̄ = 这种球的加权平均抓取率），里程碑摊到每个球上就是 M × p̄ / STEP。
+  if (cheapest !== null && child.theme === "POKEDEX") {
+    const milestone = pokedexMilestoneBonus(rate);
+    for (const ball of balls) {
+      const perBall = (milestone * expectedCatchRate(ball.catchPower)) / POKEDEX_MILESTONE_STEP;
+      if (perBall > ball.cost * MAX_RETURN_RATIO) {
+        const maxBonus = Math.floor(
+          (ball.cost * MAX_RETURN_RATIO * POKEDEX_MILESTONE_STEP) / expectedCatchRate(ball.catchPower)
+        );
+        findings.push({
+          level: "error",
+          title: `图鉴里程碑太高，用${ball.title}刷就能赚阳光`,
+          detail:
+            `每 ${POKEDEX_MILESTONE_STEP} 种发 ${milestone} 阳光，而平均 ` +
+            `${(POKEDEX_MILESTONE_STEP / expectedCatchRate(ball.catchPower)).toFixed(0)} 个${ball.title}` +
+            `就能凑够——摊到每个球 ${perBall.toFixed(1)} 阳光，球本身才 ${ball.cost}。` +
+            `孩子一直扔就能刷阳光，打卡就没意义了。里程碑降到 ${maxBonus} 以下，` +
+            `或者把${ball.title}提价。`,
+        });
+        break;
+      }
+    }
+  }
+
   if (cheapest === null && child.theme === "POKEDEX") {
     findings.push({
       level: "error",
