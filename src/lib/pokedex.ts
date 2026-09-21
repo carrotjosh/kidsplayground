@@ -7,7 +7,7 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
-  dailyEarnRate,
+  economyRate,
   duplicateRefund,
   pokedexMilestoneBonus,
   refreshCosts,
@@ -394,7 +394,7 @@ async function createEncounters(
  */
 export async function refreshEncounters(childId: string, dateString: string) {
   // 日薪要查任务模板，放在事务外先算好——事务里只做扣费和改遇怪，别把锁的持有时间拉长。
-  const costs = refreshCosts(await dailyEarnRate(childId));
+  const costs = refreshCosts(await economyRate(childId));
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
     const date = dateStringToUtcDate(dateString);
@@ -448,7 +448,7 @@ export async function throwBall(
 ): Promise<ThrowResult> {
   // 各种奖励金额都按日薪算（见 lib/economy.ts）。算日薪要查任务模板，
   // 放事务外先算好，别让这次查询占着 Child 的行锁。
-  const rate = await dailyEarnRate(childId);
+  const rate = await economyRate(childId);
   const milestoneBonus = pokedexMilestoneBonus(rate);
 
   return prisma.$transaction(async (tx) => {

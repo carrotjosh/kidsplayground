@@ -1,3 +1,4 @@
+import { LedgerType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { addDays, todayDateString } from "@/lib/date";
 import { isTemplateDueOn } from "@/lib/tasks";
@@ -36,13 +37,19 @@ const MIN_RATE = 1;
 type SchedulableTemplate = Parameters<typeof isTemplateDueOn>[0] & { points: number };
 
 /**
- * 日薪 D：往后 28 天平均每天能挣多少阳光。
+ * 任务清单的**理论上限**：往后 28 天，如果每一项都做完，平均每天能挣多少。
+ *
+ * **这个数不是经济基准**（基准见下面的 economyRate）。区别曾经是致命的：
+ * 蓬蓬的理论上限 48，实际到手 13.6，完成率约三成。整套定价原来挂在 48 上，
+ * 于是后台告诉家长"去迪士尼一次要攒 66 天"，而真实是 231 天。
+ *
+ * 现在它只有两个用途：校验达标线定得合不合理，以及在体检页上做对照。
  *
  * 用真实日历逐天算而不是按"每周几天 ÷ 7"估：WORKDAY / HOLIDAY 两种排期要看法定节假日和调休，
  * 拍 5/7、2/7 在国庆和春节那两个月能差出百分之几十。isTemplateDueOn 是排任务时用的同一个函数，
  * 用它就保证了"体检算出来的日薪"和"孩子实际拿到的阳光"是同一套规则。
  */
-export function dailyEarnRateFromTemplates(
+export function maxDailyPointsFromTemplates(
   templates: SchedulableTemplate[],
   from: string = todayDateString()
 ): number {
@@ -60,12 +67,79 @@ export function dailyEarnRateFromTemplates(
 }
 
 /** 读库版本。只算 active 的模板——停用的模板不产生阳光，不该算进日薪。 */
-export async function dailyEarnRate(childId: string): Promise<number> {
+export async function maxDailyPoints(childId: string): Promise<number> {
   const templates = await prisma.taskTemplate.findMany({
     where: { childId, active: true },
     select: { points: true, scheduleType: true, weekdays: true },
   });
-  return dailyEarnRateFromTemplates(templates);
+  return maxDailyPointsFromTemplates(templates);
+}
+
+/**
+ * **经济基准 D**：家长期待孩子每天做到多少，也就是达标线。
+ *
+ * 为什么是达标线而不是任务分值之和：任务清单是**菜单**，达标线才是**期待**。
+ * 家长原话——"虽然每天给他定的任务很多，但实际我觉得他能够达标就很好了"。
+ * 按菜单定价的后果是每加一项任务，所有东西都悄悄变贵；蓬蓬的清单从 4 项涨到 9 项，
+ * 礼物就实际贵了将近一倍，而没有任何地方提过这一句。
+ *
+ * 为什么不用实测日收入：那个数会**涨**（他前半段 14.4、后半段 18.2），
+ * 跟着它走就成了跑步机——做得越多基准越高、体检越是建议涨价，越努力东西越贵。
+ * 达标线是家长定的，稳定，只有主动提高期待时才动，而那时候东西该变贵也是对的。
+ *
+ * 好处是加减任务从此不牵动经济，这正是"任务会有增减"那个老顾虑的根治办法。
+ */
+export async function economyRate(childId: string): Promise<number> {
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { dailyGoalPoints: true },
+  });
+  return Math.max(MIN_RATE, child?.dailyGoalPoints ?? MIN_RATE);
+}
+
+/** 实际收入的观测窗口。四周够抹平"这周状态不好"，又不至于被一个月前的样子拖住。 */
+const OBSERVED_WINDOW_DAYS = 28;
+
+/**
+ * 他**实际**每天挣到多少阳光（按最近四周的真实流水算）。
+ *
+ * 和上面的 dailyEarnRate 是两回事，这个区别很重要：
+ *   maxDailyPoints = 任务模板分值之和 = "把所有任务都做完能挣多少"（理论上限）
+ *   economyRate    = 达标线 = 定价基准
+ *   observedEarnRate = 真实到手
+ *
+ * 蓬蓬的例子：理论 48，实际 12.5——任务完成率约三成。于是后台会告诉家长
+ * "去迪士尼一次要攒 66 天"（3150 ÷ 48），而真实是 **252 天**。
+ * 那句话不是估算偏差，是直接错的，而家长正是照着它决定要不要降价。
+ *
+ * 口径和 lib/level.ts 的 totalEarned 一致：只算**打卡挣来的**
+ * （完成任务 + 满勤奖 − 撤销）。图鉴/花园的奖励不算——那是玩法内部的循环，
+ * 而且孩子多半转手又买了球，不构成"攒得起礼物"的积累。
+ *
+ * 数据不足（新建档不满一周）时返回 null，调用方退回理论日薪，别拿三天的样本当结论。
+ */
+export async function observedEarnRate(childId: string): Promise<number | null> {
+  const child = await prisma.child.findUnique({
+    where: { id: childId },
+    select: { createdAt: true },
+  });
+  if (!child) return null;
+
+  const since = new Date(Date.now() - OBSERVED_WINDOW_DAYS * 86400_000);
+  const from = child.createdAt > since ? child.createdAt : since;
+  const days = Math.floor((Date.now() - from.getTime()) / 86400_000);
+  if (days < 7) return null;
+
+  const rows = await prisma.pointsLedger.aggregate({
+    where: {
+      childId,
+      createdAt: { gte: from },
+      type: { in: [LedgerType.TASK_COMPLETE, LedgerType.MONTHLY_BONUS, LedgerType.TASK_REVOKE] },
+    },
+    _sum: { amount: true },
+  });
+  // 撤销那条流水本身是负数，直接相加就是净额
+  return Math.max(0, (rows._sum.amount ?? 0) / days);
 }
 
 /**
@@ -164,7 +238,14 @@ export const PRICE_BANDS = {
   // 上限放到 2.5 天：花园升级会解锁更贵的品种（寒冰射手 40、大嘴花 55），
   // 按第 1 级那四种（8~30）卡上限的话，一升级就会开始误报"偏贵"。
   plant: { label: "植物", min: 0.25, max: 2.5 },
-  dailyGoal: { label: "每日达标线", min: 0.6, max: 0.9 },
+  /**
+   * 达标线**占任务总分的比例**（不是占基准——基准就是达标线本身）。
+   *
+   * 下限 0.25：低于这个，做一两项就达标了，"达标"失去意义。
+   * 上限 0.8：高于这个，几乎要全做完才算达标，偶尔漏一项就前功尽弃——
+   * 而清单本来就是个菜单，不是必须清空的任务。
+   */
+  dailyGoal: { label: "每日达标线（占任务总分）", min: 0.25, max: 0.8 },
 } as const;
 
 export type PriceBandKey = keyof typeof PRICE_BANDS;

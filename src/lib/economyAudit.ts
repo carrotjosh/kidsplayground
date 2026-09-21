@@ -2,7 +2,9 @@ import { BallTier } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
   AMOUNT_MULTIPLIERS,
-  dailyEarnRate,
+  economyRate,
+  maxDailyPoints,
+  observedEarnRate,
   duplicateRefund,
   monthlyBonusPoints,
   PRICE_BANDS,
@@ -130,7 +132,7 @@ const BALL_BAND: Record<BallTier, PriceBandKey> = {
 };
 
 export async function auditEconomy(childId: string): Promise<EconomyAudit> {
-  const [child, rewards, balls, plants, rate] = await Promise.all([
+  const [child, rewards, balls, plants, rate, maxPoints, observed] = await Promise.all([
     prisma.child.findUniqueOrThrow({
       where: { id: childId },
       select: {
@@ -143,8 +145,23 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     prisma.reward.findMany({ where: { childId, active: true }, orderBy: { cost: "asc" } }),
     prisma.ballType.findMany({ where: { childId, active: true } }),
     prisma.plantType.findMany({ where: { childId, active: true }, orderBy: { cost: "asc" } }),
-    dailyEarnRate(childId),
+    // 基准 = 达标线（家长的期待）。理论上限和实测收入只用来做对照和说实话，
+    // 不参与定价——理由见 lib/economy.ts 的 economyRate。
+    economyRate(childId),
+    maxDailyPoints(childId),
+    observedEarnRate(childId),
   ]);
+
+  /**
+   * 「要攒几天」一律按**实测收入**算，不按基准。
+   *
+   * 这里曾经拿理论上限（任务分值之和）除，于是后台告诉家长
+   * "去迪士尼一次要攒 66 天"，而按孩子真实到手的速度是 231 天。
+   * 那不是估算偏差，是直接错的——而家长正是照着这句话决定要不要降价。
+   * 数据不足（建档不满一周）时退回基准，总比不显示强。
+   */
+  const payRate = observed && observed > 0 ? observed : rate;
+  const daysToSave = (cost: number) => Math.round(cost / payRate);
 
   const findings: AuditFinding[] = [];
 
@@ -154,8 +171,8 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
   if (rate === 0) {
     findings.push({
       level: "error",
-      title: "没有任何生效中的任务",
-      detail: "日薪是 0，孩子赚不到阳光，所有价格都没有意义。先去「任务模板」加几项。",
+      title: "每日达标线是 0",
+      detail: "达标线是 0，所有价格都没有意义。先去「孩子档案」把每日达标线设成一个正数。",
     });
   } else if (Math.abs(drift - 1) >= DRIFT_THRESHOLD) {
     // 刻意不说"价格失准了，快校准"。
@@ -168,7 +185,7 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     const days = drift > 1 ? "更快" : "更慢";
     findings.push({
       level: "warn",
-      title: `日薪从 ${baseline} 变成了 ${rate}`,
+      title: `基准从 ${baseline} 变成了 ${rate}`,
       detail:
         `孩子每天${drift > 1 ? "多" : "少"}赚 ${pct}%，同一份奖励现在攒得${days}了。改不改价看你想保持哪个不变：` +
         `想让「同样的付出换同样的东西」就不用改——阳光和任务难度挂钩，付出本来就没变，只是赚得${days}；` +
@@ -247,12 +264,24 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     });
   }
 
-  // ---- 不变量 3：达标线不能高过日薪 ----
-  if (rate > 0 && child.dailyGoalPoints > rate) {
+  // ---- 不变量 3：达标线必须真的够得着 ----
+  //
+  // 基准现在**就是**达标线，所以原来那条"达标线不能高过日薪"成了恒真。
+  // 真正要守的变成：达标线不能高过任务清单的理论上限——否则就算全做完也达不了标，
+  // 日历永远不会点亮，满勤奖形同虚设。
+  if (maxPoints > 0 && child.dailyGoalPoints > maxPoints) {
     findings.push({
       level: "error",
-      title: `每日达标线 ${child.dailyGoalPoints} 高于日薪 ${rate}`,
+      title: `每日达标线 ${child.dailyGoalPoints} 高于任务总分 ${maxPoints}`,
       detail: "就算全部任务都做完也达不了标，日历永远不会点亮，满勤奖形同虚设。",
+    });
+  } else if (maxPoints > 0 && child.dailyGoalPoints / maxPoints > 0.9) {
+    findings.push({
+      level: "warn",
+      title: `达标线是任务总分的 ${Math.round((child.dailyGoalPoints / maxPoints) * 100)}%`,
+      detail:
+        "几乎要全做完才算达标，偶尔漏一项就前功尽弃。" +
+        "留点余量（六成左右）更容易形成习惯——达标该是「今天做到了」，不是「今天一点没落下」。",
     });
   }
 
@@ -262,22 +291,33 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
   // 意味着孩子一旦攒够就能连着换，家长那个月的开销直接失控。
   const NO_COOLDOWN_MAX_DAYS = 3;
   for (const r of rewards) {
-    if (r.cooldownDays === null && rate > 0 && r.cost / rate > NO_COOLDOWN_MAX_DAYS) {
+    if (r.cooldownDays === null && payRate > 0 && daysToSave(r.cost) > NO_COOLDOWN_MAX_DAYS) {
       findings.push({
         level: "warn",
         title: `「${r.title}」没有设置冷却`,
-        detail: `它要攒 ${Math.round(r.cost / rate)} 天，但没有冷却限制——孩子攒够就能连着换。给它设一个冷却天数才锁得住每月开销。`,
+        detail: `它要攒 ${daysToSave(r.cost)} 天（按他实测每天 ${payRate.toFixed(1)} 阳光），但没有冷却限制——孩子攒够就能连着换。给它设一个冷却天数才锁得住每月开销。`,
       });
     }
   }
 
-  // ---- 不变量 5：最贵的礼物不能遥不可及 ----
-  const priciest = rewards[rewards.length - 1];
-  if (rate > 0 && priciest && priciest.cost / rate > 30) {
+  // ---- 不变量 5：眼前必须有够得着的东西 ----
+  //
+  // 原来这条盯的是"最贵的礼物不能超过一个月工资"。那是错的方向：
+  // 家长可能**故意**放一个要攒大半年的大目标（"去迪士尼一次"就是），
+  // 那不是配置错误，是家长的选择。
+  //
+  // 真正会出问题的是反面——清单里最便宜的那个也要攒很久，孩子看哪儿都够不着。
+  // 所以改成盯"最近的那个目标有多远"，并且按**实测收入**算，不按基准。
+  const NEAREST_MAX_DAYS = 7;
+  const cheapestReward = rewards.find((r) => r.cost > 0);
+  if (payRate > 0 && cheapestReward && daysToSave(cheapestReward.cost) > NEAREST_MAX_DAYS) {
     findings.push({
       level: "warn",
-      title: `「${priciest.title}」要攒 ${Math.round(priciest.cost / rate)} 天`,
-      detail: "超过一个月工资的目标，一年级孩子很难维持动力。考虑降价或者拆成阶段性小目标。",
+      title: `最便宜的礼物「${cheapestReward.title}」也要攒 ${daysToSave(cheapestReward.cost)} 天`,
+      detail:
+        `按他实测每天 ${payRate.toFixed(1)} 阳光算，眼前没有一个够得着的目标，` +
+        "攒的过程会显得遥遥无期。加一两个几天就能换到的小奖励，" +
+        "大目标可以照旧放着——那个远是应该的。",
     });
   }
 
@@ -307,7 +347,10 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     },
     {
       title: "其他",
-      items: [priced("dailyGoal", childId, "每日达标线", child.dailyGoalPoints, rate, "dailyGoal")],
+      // 和**任务总分**比，不是和基准比——基准就是达标线本身，比出来恒等于 1
+      items: [
+        priced("dailyGoal", childId, "每日达标线（占任务总分）", child.dailyGoalPoints, maxPoints, "dailyGoal"),
+      ],
     },
   ].filter((g) => g.items.length > 0);
 
@@ -347,11 +390,10 @@ export async function recalibrationPreview(childId: string): Promise<{
   const { rate, baseline } = await auditEconomy(childId);
   const factor = baseline > 0 && rate > 0 ? rate / baseline : 1;
 
-  const [rewards, balls, plants, child] = await Promise.all([
+  const [rewards, balls, plants] = await Promise.all([
     prisma.reward.findMany({ where: { childId }, orderBy: { cost: "asc" } }),
     prisma.ballType.findMany({ where: { childId } }),
     prisma.plantType.findMany({ where: { childId }, orderBy: { cost: "asc" } }),
-    prisma.child.findUniqueOrThrow({ where: { id: childId }, select: { dailyGoalPoints: true } }),
   ]);
 
   // 零成本礼物（"今晚吃什么我决定"那类）本来就该保持零成本，乘以任何倍数都还是 0，
@@ -366,12 +408,9 @@ export async function recalibrationPreview(childId: string): Promise<{
       .sort((a, b) => a.cost - b.cost)
       .map((b) => ({ kind: "ball", label: b.title, from: b.cost, to: scale(b.cost) })),
     ...plants.map((p) => ({ kind: "plant", label: p.title, from: p.cost, to: scale(p.cost) })),
-    {
-      kind: "dailyGoal",
-      label: "每日达标线",
-      from: child.dailyGoalPoints,
-      to: scale(child.dailyGoalPoints),
-    },
+    // **达标线不参与校准**。基准现在就是达标线（见 lib/economy.ts 的 economyRate），
+    // 缩放它等于自己改自己：改完基准又变了，漂移永远归不了零，点一次校准就能
+    // 把达标线一路推上去。它只能由家长在「孩子档案」里显式调整。
   ];
 
   return { factor, rows: rows.filter((r) => r.from !== r.to) };

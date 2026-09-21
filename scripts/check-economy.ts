@@ -21,8 +21,9 @@ import { purgeTestTenants } from "../src/lib/testTenant";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
   AMOUNT_MULTIPLIERS,
-  dailyEarnRate,
-  dailyEarnRateFromTemplates,
+  economyRate,
+  maxDailyPoints,
+  maxDailyPointsFromTemplates,
   duplicateRefund,
   monthlyBonusPoints,
   pokedexMilestoneBonus,
@@ -121,7 +122,7 @@ async function main() {
   if (swept > 0) console.log(`清理了 ${swept} 个上次残留的临时租户。`);
 
   // ---------- 1. 日薪 ----------
-  console.log("\n【日薪】按真实日历逐天算，不是按 5/7、2/7 拍");
+  console.log("\n【任务总分】按真实日历逐天算，不是按 5/7、2/7 拍（这是理论上限，不是定价基准）");
   const daily = (points: number, weekdays: number[]) => ({
     points,
     scheduleType: ScheduleType.WEEKDAYS,
@@ -129,16 +130,16 @@ async function main() {
   });
   expect(
     "默认三项任务(10+10+5，每天)",
-    dailyEarnRateFromTemplates([
+    maxDailyPointsFromTemplates([
       daily(10, [0, 1, 2, 3, 4, 5, 6]),
       daily(10, [0, 1, 2, 3, 4, 5, 6]),
       daily(5, [0, 1, 2, 3, 4, 5, 6]),
     ]),
     25
   );
-  expect("只排周一到周五、每次 7 分", dailyEarnRateFromTemplates([daily(7, [1, 2, 3, 4, 5])]), 5);
-  expect("只排周末、每次 14 分", dailyEarnRateFromTemplates([daily(14, [0, 6])]), 4);
-  expect("没有任何模板", dailyEarnRateFromTemplates([]), 0);
+  expect("只排周一到周五、每次 7 分", maxDailyPointsFromTemplates([daily(7, [1, 2, 3, 4, 5])]), 5);
+  expect("只排周末、每次 14 分", maxDailyPointsFromTemplates([daily(14, [0, 6])]), 4);
+  expect("没有任何模板", maxDailyPointsFromTemplates([]), 0);
 
   // ---------- 2. 按日薪派生的金额 ----------
   // 这一组是回归测试：改造前它们是硬编码常量，改造后必须一模一样，
@@ -208,7 +209,9 @@ async function main() {
   try {
     // ---------- 3. 干净状态 ----------
     console.log("\n【体检】默认配置应该是干净的");
-    expect("默认日薪", await dailyEarnRate(child.id), 25);
+    // 基准 = 达标线，不再是任务分值之和。默认档案达标线 20、任务总分 25。
+    expect("默认基准（达标线）", await economyRate(child.id), 20);
+    expect("默认任务总分（理论上限）", await maxDailyPoints(child.id), 25);
     const clean = await auditEconomy(child.id);
     if (clean.findings.length === 0) pass("默认配置没有任何问题");
     else fail("默认配置", `报了 ${clean.findings.map((f) => f.title).join(" / ")}`);
@@ -236,13 +239,18 @@ async function main() {
       pass("当前里程碑（0.8 天工资）不会让扔球变成赚钱手段");
     }
 
-    // 把它调回原来的 4 天工资，必须报出来
+    // 调大到真会踩穿的程度，必须报出来。
+    //
+    // 为什么不是用当初那个 4：上限由**球价**定死（M × p̄ / 8 ≤ 8 × 0.5 → M ≤ 87），
+    // 而基准换成达标线之后 D 从 48 降到 20，4 倍只有 80，反而落在安全线内。
+    // 当初 4 会出事是因为 D 被算成了 48——这也从侧面说明换锚顺带治了那个病。
+    // 这里用 6（=120）来验证守卫本身还活着。
     const origMilestone = AMOUNT_MULTIPLIERS.pokedexMilestone;
-    (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = 4;
+    (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = 6;
     expectFinding(
       (await auditEconomy(child.id)).findings,
       "里程碑太高",
-      "里程碑调回 4 天工资 → 报出「刷里程碑能赚阳光」"
+      "里程碑调到 6 天工资 → 报出「刷里程碑能赚阳光」"
     );
     (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = origMilestone;
 
@@ -262,19 +270,30 @@ async function main() {
     await prisma.child.update({ where: { id: child.id }, data: { dailyGoalPoints: 99 } });
     expectFinding(
       (await auditEconomy(child.id)).findings,
-      "高于日薪",
-      "达标线 99 > 日薪 25 → 报出「永远达不了标」"
+      "高于任务总分",
+      "达标线 99 > 任务总分 25 → 报出「永远达不了标」"
     );
     await prisma.child.update({ where: { id: child.id }, data: { dailyGoalPoints: 20 } });
 
-    // (4) 最贵的礼物超过一个月工资
-    const big = await prisma.reward.findFirstOrThrow({
-      where: { childId: child.id },
-      orderBy: { cost: "desc" },
+    // (4) 眼前没有够得着的东西（原来盯的是"最贵的太贵"，那是错的方向：
+    //     家长可能故意放一个攒大半年的大目标）
+    const rewardCosts = await prisma.reward.findMany({
+      where: { childId: child.id, cost: { gt: 0 } },
+      select: { id: true, cost: true },
     });
-    await prisma.reward.update({ where: { id: big.id }, data: { cost: 2000 } });
-    expectFinding((await auditEconomy(child.id)).findings, "要攒", "礼物 2000 → 报出「攒太久」");
-    await prisma.reward.update({ where: { id: big.id }, data: { cost: big.cost } });
+    await prisma.reward.updateMany({
+      where: { childId: child.id, cost: { gt: 0 } },
+      data: { cost: 2000 },
+    });
+    expectFinding(
+      (await auditEconomy(child.id)).findings,
+      "最便宜的礼物",
+      "所有礼物都要攒很久 → 报出「眼前没有够得着的」"
+    );
+    // 全部还原——只还原最便宜那个的话，后面的校准测试会拿着被改成 2000 的玩具算
+    await prisma.$transaction(
+      rewardCosts.map((r) => prisma.reward.update({ where: { id: r.id }, data: { cost: r.cost } }))
+    );
 
     // ---------- 5. 漂移与校准 ----------
     console.log("\n【校准】加一门任务后价格应该被判定为偏便宜，校准一次即归位");
@@ -290,17 +309,31 @@ async function main() {
         weekdays: [0, 1, 2, 3, 4, 5, 6],
       },
     });
-    expect("加一门 13 分的任务后日薪", await dailyEarnRate(child.id), 38);
+    expect("加一门 13 分的任务后，任务总分涨到", await maxDailyPoints(child.id), 38);
+    // 这是换锚之后最重要的一条：**加任务不再产生任何漂移**。
+    // 旧口径下基准会从 25 跳到 38，所有价格瞬间"便宜了 34%"，而家长什么也没改。
+    expect("加任务后基准纹丝不动", await economyRate(child.id), 20);
+    if (!(await auditEconomy(child.id)).findings.some((f) => f.title.includes("基准从"))) {
+      pass("加任务不产生漂移提示（这正是换锚要解决的问题）");
+    } else {
+      fail("加任务", "仍然报了漂移");
+    }
+
+    // 漂移只能由**家长主动提高期待**触发：达标线 20 → 30
+    await prisma.child.update({ where: { id: child.id }, data: { dailyGoalPoints: 30 } });
     const drifted = await auditEconomy(child.id);
-    expectFinding(drifted.findings, "日薪从 25 变成了 38", "报出日薪漂移");
+    expectFinding(drifted.findings, "基准从 20 变成了 30", "调高达标线 → 报出漂移");
 
     const preview = await recalibrationPreview(child.id);
-    expect("校准倍数", Number(preview.factor.toFixed(2)), 1.52);
+    expect("校准倍数", Number(preview.factor.toFixed(2)), 1.5);
+    // 达标线自己不能进校准清单——基准就是它，缩放它等于自己改自己
+    if (!preview.rows.some((r) => r.kind === "dailyGoal")) pass("达标线不参与校准（否则会自己推自己）");
+    else fail("校准清单", "把达标线也算进去了");
     const toyBefore = await prisma.reward.findFirstOrThrow({
       where: { childId: child.id, title: "一个小玩具" },
     });
     const toyRow = preview.rows.find((r) => r.label === "一个小玩具");
-    expect("预览里「一个小玩具」500 →", toyRow?.to, 760);
+    expect("预览里「一个小玩具」500 →", toyRow?.to, 750);
     // 零成本礼物不该出现在预览里：它们是刻意不花阳光的一档，不是"很便宜"
     if (!preview.rows.some((r) => r.from === 0)) pass("零成本礼物不参与校准");
     else fail("零成本礼物", "被算进了校准");
@@ -328,10 +361,8 @@ async function main() {
         ),
         prisma.child.update({
           where: { id: child.id },
-          data: {
-            dailyGoalPoints: scale(c.dailyGoalPoints),
-            priceBaselineRate: scale(c.priceBaselineRate),
-          },
+          // 只动基准值，不动达标线——和 economy/actions.ts 的 recalibrateAction 一致
+          data: { priceBaselineRate: scale(c.priceBaselineRate) },
         }),
       ]);
     }
@@ -347,23 +378,23 @@ async function main() {
       575
     );
     const partial = await auditEconomy(child.id);
-    expect("基准值 25 → (不是 38)", partial.baseline, 29);
-    expect("剩余漂移", Number(partial.drift.toFixed(2)), 1.31);
-    expectFinding(partial.findings, "日薪从 29 变成了 38", "仍然如实提示还剩多少没调");
+    expect("基准值 20 → 23（不是直接跳到 30）", partial.baseline, 23);
+    expect("剩余漂移", Number(partial.drift.toFixed(2)), 1.3);
+    expectFinding(partial.findings, "基准从 23 变成了 30", "仍然如实提示还剩多少没调");
 
     // ---- 再调到位 ----
-    const rate = await dailyEarnRate(child.id);
+    const rate = await economyRate(child.id);
     await calibrate(rate / partial.baseline);
     const toyAfter = await prisma.reward.findUniqueOrThrow({ where: { id: toyBefore.id } });
     // 分两步走会因为中间四舍五入和一步到位差几个阳光（760 vs 754），这是可以接受的
-    if (Math.abs(toyAfter.cost - 760) <= 10) pass(`分两步调完「一个小玩具」= ${toyAfter.cost}（一步是 760）`);
-    else fail("分两步的累计误差", `变成了 ${toyAfter.cost}，离 760 太远`);
+    if (Math.abs(toyAfter.cost - 750) <= 10) pass(`分两步调完「一个小玩具」= ${toyAfter.cost}（一步是 750）`);
+    else fail("分两步的累计误差", `变成了 ${toyAfter.cost}，离 750 太远`);
     const after = await auditEconomy(child.id);
-    expect("调到位后的基准值", after.baseline, 38);
+    expect("调到位后的基准值", after.baseline, 30);
     expect("调到位后漂移倍数", after.drift, 1);
     if ((await recalibrationPreview(child.id)).rows.length === 0) pass("再校准一次没有任何变动（幂等）");
     else fail("校准幂等", "第二次仍然想改价");
-    if (!after.findings.some((f) => f.title.includes("日薪从"))) pass("调到位后不再提示漂移");
+    if (!after.findings.some((f) => f.title.includes("基准从"))) pass("调到位后不再提示漂移");
     else fail("校准后", "还在提示漂移");
 
     // ---------- 花园：僵尸不再能被白嫖免疫 ----------

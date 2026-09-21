@@ -10,7 +10,7 @@ import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { checkLevelUp } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
-import { dailyEarnRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
+import { economyRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
 import {
   catchProbability,
   ensureTodayEncounters,
@@ -50,7 +50,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   await ensureTodayEncounters(child.id, today);
 
   // 各种奖励金额都跟着日薪走（见 lib/economy.ts），家长改了任务模板会自动跟上
-  const rate = await dailyEarnRate(child.id);
+  const rate = await economyRate(child.id);
   const milestoneBonus = pokedexMilestoneBonus(rate);
   // 收集进度的分母只算**等级已经放出来的**那些。用全库 386 当分母的话，
   // 刚开始玩的孩子看到的是 3/386 的进度条，等于一上来就告诉他"你永远集不完"。
