@@ -118,7 +118,9 @@ model Child {
   // 家长一改任务模板，日薪就变了，而目录里的绝对价格不会自己跟上——
   // 存下基准值才能算出漂移了多少、一键校准该乘几倍（见 lib/economy.ts）。
   // 默认 25 = lib/bootstrap.ts 默认任务模板的每日满分。
-  priceBaselineRate Int @default(25)
+  // 现有价格是按哪个基准定的。基准 = 达标线（见 lib/economy.ts 的 economyRate），
+  // 所以默认值必须和 dailyGoalPoints 的默认值一致，否则新建的档案一上来就报漂移。
+  priceBaselineRate Int @default(20)
 
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]

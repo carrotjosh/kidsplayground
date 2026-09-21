@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { prisma } from "@/lib/db";
-import { dailyEarnRate } from "@/lib/economy";
+import { economyRate } from "@/lib/economy";
 import { ActionError } from "@/lib/errors";
 
 /**
@@ -36,7 +36,7 @@ export async function recalibrateAction(formData: FormData) {
   await requireParentSession();
   const child = await getPrimaryChild();
 
-  const rate = await dailyEarnRate(child.id);
+  const rate = await economyRate(child.id);
   if (rate <= 0) throw new ActionError("现在一个生效中的任务都没有，先去任务模板加几项");
 
   // 倍数由页面传入（家长可以只调一部分），但**范围和取整都在服务端重新校验**，
@@ -95,7 +95,7 @@ export async function recalibrateAction(formData: FormData) {
 export async function acceptCurrentPricesAction() {
   await requireParentSession();
   const child = await getPrimaryChild();
-  const rate = await dailyEarnRate(child.id);
+  const rate = await economyRate(child.id);
   if (rate <= 0) throw new ActionError("现在一个生效中的任务都没有，先去任务模板加几项");
 
   await prisma.child.update({

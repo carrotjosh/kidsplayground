@@ -6,7 +6,7 @@ import { getActiveChild } from "@/lib/child";
 import { todayAsUtcDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { ensureBallTypes } from "@/lib/bootstrap";
-import { dailyEarnRate, pokedexMilestoneBonus } from "@/lib/economy";
+import { economyRate, pokedexMilestoneBonus } from "@/lib/economy";
 import { levelProgress, totalEarned } from "@/lib/level";
 import {
   masteryGoal,
@@ -31,7 +31,7 @@ export default async function BallsAdminPage() {
 
   const ceiling = speciesCeilingForLevel(child.level);
   const regionName = regionAt(ceiling);
-  const milestoneBonus = pokedexMilestoneBonus(await dailyEarnRate(child.id));
+  const milestoneBonus = pokedexMilestoneBonus(await economyRate(child.id));
 
   const [balls, counts, speciesCount, caught, earned, todaysEncounters] = await Promise.all([
     prisma.ballType.findMany({ where: { childId: child.id } }),

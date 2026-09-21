@@ -1,7 +1,7 @@
 import { LedgerType, ScheduleType, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
-import { dailyEarnRateFromTemplates, monthlyBonusPoints } from "@/lib/economy";
+import { monthlyBonusPoints } from "@/lib/economy";
 import { getDayType, type DayType } from "@/lib/holidays";
 import { isTemplateDueOn } from "@/lib/tasks";
 import {
@@ -198,8 +198,9 @@ export async function getMonthSummary(
     }),
     prisma.taskTemplate.findMany({
       where: { childId, active: true },
-      // points 是给 dailyEarnRateFromTemplates 算日薪用的（满勤奖金额按日薪走）
-      select: { points: true, scheduleType: true, weekdays: true },
+      // 只用来判断哪几天排了任务（scheduledTaskDates）。
+      // **金额不再从这里算**——满勤奖按达标线走，见下面 bonusPoints。
+      select: { scheduleType: true, weekdays: true },
     }),
   ]);
 
@@ -262,7 +263,9 @@ export async function getMonthSummary(
     bonus: eligibility,
     monthEarned: days.reduce((sum, d) => sum + d.earned, 0),
     bonusRatio: MONTHLY_BONUS_RATIO,
-    bonusPoints: monthlyBonusPoints(dailyEarnRateFromTemplates(templates)),
+    // 满勤奖金额按**达标线**算（= lib/economy.ts 的 economyRate），
+    // 不再按任务模板分值之和——那是"全做完"的理论上限，蓬蓬的例子里差 3.5 倍。
+    bonusPoints: monthlyBonusPoints(child.dailyGoalPoints),
     onTrackForBonus: taskDays > 0 && reachedDays >= Math.ceil(taskDays * MONTHLY_BONUS_RATIO),
     bonusGranted: Boolean(bonusEntry),
   };
@@ -384,9 +387,11 @@ export async function settleMonthlyBonusForChild(child: {
 
     const templates = await tx.taskTemplate.findMany({
       where: { childId, active: true },
-      // points 是给 dailyEarnRateFromTemplates 算日薪用的（满勤奖金额按日薪走）
-      select: { points: true, scheduleType: true, weekdays: true },
+      // 同 getMonthSummary：只用来判断哪几天排了任务，金额不从这里算
+      select: { scheduleType: true, weekdays: true },
     });
+    // 满勤奖按**达标线**算，见 getMonthSummary 里同样的注释
+    const goalPoints = locked.dailyGoalPoints;
     // 起算日在事务里重新取一次，保证发放和页面展示用的是同一套规则（只看已完成的打卡，
     // 理由见 getChildStartDate）
     const earliestTask = await tx.dailyTask.findFirst({
@@ -440,13 +445,13 @@ export async function settleMonthlyBonusForChild(child: {
       ).length;
 
       if (taskDays > 0 && reachedDays >= Math.ceil(taskDays * MONTHLY_BONUS_RATIO)) {
-        // 按结算这一刻的日薪算金额。补发很久以前的月份时用的也是今天的日薪——
+        // 按结算这一刻的达标线算金额。补发很久以前的月份时用的也是今天的达标线——
         // 这是刻意的：金额一旦写进流水就是快照，与其为历史月份还原当时的任务模板
-        // （模板会被改、被删，还原不出来），不如用一个简单可解释的规则。
+        // （达标线会被改，还原不出来），不如用一个简单可解释的规则。
         await tx.pointsLedger.create({
           data: {
             childId,
-            amount: monthlyBonusPoints(dailyEarnRateFromTemplates(templates)),
+            amount: monthlyBonusPoints(goalPoints),
             reason: `${cursor} 月度满勤奖励（${reachedDays}/${taskDays} 天达标）`,
             type: LedgerType.MONTHLY_BONUS,
           },
