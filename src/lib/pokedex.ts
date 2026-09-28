@@ -8,8 +8,8 @@ import {
 import { prisma } from "@/lib/db";
 import {
   economyRate,
-  duplicateRefund,
   pokedexMilestoneBonus,
+  pokedexMilestoneStep,
   refreshCosts,
   speciesMasteryBonus,
 } from "@/lib/economy";
@@ -89,19 +89,16 @@ const MAX_CATCH_RATE = 0.95;
 /** 闪光个体的概率，沿用原作的 1/64（比原作 1/4096 高很多，不然孩子一辈子见不到一只）。 */
 const SHINY_RATE = 1 / 64;
 
-/**
- * 抓到已经有的那一种，按稀有度返还的阳光。
+/*
+ * 【已移除】抓到重复的返还阳光（2026-09-28）。
  *
- * 为什么需要：模拟一年发现，**第 2 个月就有 37% 的捕获是重复的、第 3 个月过半**，
- * 而重复原本什么都不给（不算里程碑、不给阳光）——"又是这只"会直接消掉抓的动力。
- * 151 种的图鉴迟早会走到"几乎全是重复"，这是有限收集必然的终局，
- * 所以出路不是让新种类更多，而是让每一次成功都值点什么。
+ * 当初加它是因为模拟显示第 2 个月就有 37% 的捕获是重复的，怕「又是这只」消掉动力。
+ * 去掉的理由更直接：**抓哪一只是孩子自己选的**——名单每天公开，他明知道是重复
+ * 还要扔球，那就是他想要，不需要系统再补一笔。
  *
- * 数值刻意压在球价（最便宜 8 阳光）之下，保证扔球**永远不可能是赚钱手段**：
- * 最划算的情况是普通球打稀有重复，期望 0.12 × 20 = 2.4 阳光，远低于 8 的成本。
- * 球价是家长可改的，所以这条不变量在 lib/economyAudit.ts 里有实时校验，不只靠这里的数值。
+ * 副作用是好的：返还原本是扔球那条线上唯一的回流，去掉之后图鉴变成纯消耗口，
+ * 「扔球不能赚钱」那条不变量只剩里程碑一项要盯。
  */
-/* 具体数值改成按日薪算了，见 lib/economy.ts 的 duplicateRefund（日薪 25 时正好还是 3/8/20/60）。 */
 
 /**
  * 生成遇怪时，优先挑"还没抓到过"的那一种的概率。
@@ -109,7 +106,7 @@ const SHINY_RATE = 1 / 64;
  * 只加在同一稀有度档**内部**：先按 ENCOUNTER_WEIGHTS 摇档次（保证稀有度分布不变），
  * 再在档内偏向没见过的。模拟下来前三个月的重复率从 37%/52% 降到 21%/33%，
  * 新手期的新鲜感明显好转；中后期反而略高，因为收集得更快、剩的更少——
- * 那一段由重复返还（economy.ts 的 duplicateRefund）兜着。
+ * 中后期重复变多这件事现在不做补偿了（见上面「已移除」那段）。
  *
  * 不设成 1：留一点重复才符合"可以重复抓同一种"的设定，孩子也会有再遇到心头好的惊喜。
  */
@@ -184,8 +181,11 @@ export function regionAt(ceiling: number): string {
   return (REGIONS.find((r) => ceiling <= r.ceiling) ?? REGIONS[REGIONS.length - 1]).name;
 }
 
-/** 图鉴里程碑：每集齐这么多**不同种类**发一次奖励。金额见 lib/economy.ts 的 pokedexMilestoneBonus。 */
-export const POKEDEX_MILESTONE_STEP = 8;
+/*
+ * 图鉴里程碑「每几种发一次」和「发多少」都挪到 lib/economy.ts 了
+ * （pokedexMilestoneStep / pokedexMilestoneBonus），两者都能被 Child 上的字段覆写。
+ * 这里不再留常量——同一个数放两份一定会漂。
+ */
 
 /**
  * 扔球的结果。文案在这里就用 annotate() **在服务端**标好拼音再返回。
@@ -446,10 +446,17 @@ export async function throwBall(
   ballTypeId: string,
   childId: string
 ): Promise<ThrowResult> {
-  // 各种奖励金额都按日薪算（见 lib/economy.ts）。算日薪要查任务模板，
-  // 放事务外先算好，别让这次查询占着 Child 的行锁。
+  // 各种奖励金额都按基准（达标线）算（见 lib/economy.ts）。
+  // 放事务外先算好，别让这些查询占着 Child 的行锁。
   const rate = await economyRate(childId);
-  const milestoneBonus = pokedexMilestoneBonus(rate);
+  // 里程碑的金额和步长可以被家长固定住（Child 上那两个可空字段），
+  // 没设就跟着基准走。
+  const cfg = await prisma.child.findUniqueOrThrow({
+    where: { id: childId },
+    select: { pokedexMilestoneBonus: true, pokedexMilestoneStep: true },
+  });
+  const milestoneBonus = pokedexMilestoneBonus(rate, cfg.pokedexMilestoneBonus);
+  const milestoneStep = pokedexMilestoneStep(cfg.pokedexMilestoneStep);
 
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
@@ -584,7 +591,7 @@ export async function throwBall(
     const total = distinct.length;
     let newMilestone: { total: number; bonus: number } | null = null;
 
-    if (total > 0 && total % POKEDEX_MILESTONE_STEP === 0) {
+    if (total > 0 && total % milestoneStep === 0) {
       // 用 reason 里的种类数做幂等标记：同一个里程碑只发一次，
       // 就算孩子放生又抓回来把数字凑到同一个数，也不会重复发。
       const marker = `图鉴集齐 ${total} 种`;
@@ -604,21 +611,12 @@ export async function throwBall(
       }
     }
 
-    // 重复的按稀有度返还一点阳光，让每一次成功都值点什么（见 economy.ts 的 duplicateRefund）
-    let refund = 0;
-    if (alreadyOwned) {
-      refund = duplicateRefund(rate, species.rarity);
-      if (refund > 0) {
-        await tx.pointsLedger.create({
-          data: {
-            childId,
-            amount: refund,
-            reason: `重复的${species.nameZh}，换成阳光`,
-            type: LedgerType.POKEDEX_DUPLICATE,
-          },
-        });
-      }
-    }
+    // 抓到重复的**不再返还阳光**（2026-09-28 去掉）。
+    //
+    // 原来的理由是"让每一次成功都值点什么"——模拟显示第 2 个月就有 37% 的捕获
+    // 是重复的，怕孩子失去动力。但家长的判断更直接：**抓哪一只是孩子自己选的**，
+    // 他明知道是重复还要抓，那就是他想要，不需要系统再补一笔。
+    // 而且返还是扔球那条线上唯一的回流，去掉之后图鉴彻底变成纯消耗口。
 
     // 同一种攒够了 → 这一种收集完成，发一次奖励。
     // 幂等靠 reason 里的标记：放生又抓回来凑到同一个数也不会重复发（同下面按种类数的里程碑）。
@@ -650,8 +648,8 @@ export async function throwBall(
     if (mastery) {
       notes.push(annotate(`${species.nameZh} 集满 ${goal} 只，奖励 ${mastery.bonus} 阳光！`));
     }
-    if (refund > 0) {
-      notes.push(annotate(`已经有一只啦，这只换成 ${refund} 阳光`));
+    if (alreadyOwned) {
+      notes.push(annotate("这一只你已经有啦，这次是多收一只"));
     }
     if (byPity) notes.push(annotate("坚持了这么多次，这只是你应得的"));
     if (newMilestone) {

@@ -187,13 +187,6 @@ export default async function EconomyAdminPage() {
                   .join(" / ")}{" "}
                 阳光
               </li>
-              <li>
-                抓到重复的返还：
-                {[1, 2, 3, 4]
-                  .map((r) => `${RARITY_LABELS[r]} ${audit.derived.duplicate[r]}`)
-                  .join(" / ")}{" "}
-                阳光
-              </li>
             </>
           )}
         </ul>

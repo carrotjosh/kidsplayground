@@ -24,7 +24,7 @@ import {
   economyRate,
   maxDailyPoints,
   maxDailyPointsFromTemplates,
-  duplicateRefund,
+  pokedexMilestoneStep,
   monthlyBonusPoints,
   pokedexMilestoneBonus,
   refreshCosts,
@@ -55,6 +55,7 @@ import {
 } from "../src/lib/garden";
 import {
   ensureTodayEncounters,
+  throwBall,
   refreshEncounters,
   REGIONS,
   regionAt,
@@ -156,17 +157,12 @@ async function main() {
   // 1.5 是倒推的：里程碑摊到每个球是 M × p̄ / 8，要 ≤ 球价 8 × 0.5，解出 M ≤ 87。
   // 又从 1.5 降到 0.8：1.5 虽然不再让扔球赚钱，但仍盖过打卡本身——
   // 日薪是"全部任务都完成"的理论值，蓬蓬实际完成率约 35%，
-  // 72 阳光等于他四天的真实收入。0.8 = 和「★3 重复返还」同值。
+  // 72 阳光等于他四天的真实收入。0.8 天工资 ≈ 5 个精灵球，是「拍肩」不是「收入」。
   expect("图鉴里程碑（4 → 1.5 → 0.8 天工资）", pokedexMilestoneBonus(25), 20);
   expect(
     "单种收集完成",
     [1, 2, 3, 4].map((r) => speciesMasteryBonus(25, r)),
     [40, 80, 150, 500]
-  );
-  expect(
-    "重复返还",
-    [1, 2, 3, 4].map((r) => duplicateRefund(25, r)),
-    [3, 8, 20, 60]
   );
   // 刷新中间那档原来是 12，现在 0.5×25=12.5 四舍五入成 13。差 1 阳光，可以接受。
   expect("刷新费（第二档由 12 变 13，四舍五入）", refreshCosts(25), [5, 13, 25]);
@@ -434,6 +430,96 @@ async function main() {
     ]);
     expect("当天新种的那棵被吃", freshAfter.status, "EATEN");
     expect("养了 5 天的那棵还活着", oldAfter.status, "ALIVE");
+
+    // ---------- 图鉴里程碑可配置 ----------
+    console.log("\n【里程碑】金额和步长都能被家长固定住");
+    expect("不设置时跟着基准走（基准 20 × 0.8）", pokedexMilestoneBonus(20), 16);
+    expect("设置了就用设置的，不再随基准浮动", pokedexMilestoneBonus(20, 50), 50);
+    expect("基准变了也不动", pokedexMilestoneBonus(99, 50), 50);
+    expect("设成 0 或负数视为没设", pokedexMilestoneBonus(20, 0), 16);
+    expect("步长默认 8", pokedexMilestoneStep(null), 8);
+    expect("步长可覆写", pokedexMilestoneStep(12), 12);
+
+    // ---------- 抓到重复不再返还阳光 ----------
+    //
+    // 2026-09-28 取消。家长的判断：抓哪一只是孩子自己选的，名单每天公开，
+    // 他明知道是重复还要扔球，那就是他想要的，系统不用再补一笔。
+    console.log("\n【重复】抓到已有的种类不再产生任何阳光流水");
+    {
+      // 不靠随机撞重复——遇怪生成里有 UNSEEN_BIAS「偏向没抓到过的」，
+      // 随机跑十几轮也未必撞得上。直接把遇怪那一行改成一个已经拥有的种类，
+      // 测的是"抓到重复之后有没有发阳光"，不该被抓取运气干扰。
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.pointsLedger.create({
+        data: { childId: child.id, amount: 500, reason: "自检垫款", type: "MANUAL_ADJUST" },
+      });
+      const poke = await prisma.ballType.findFirstOrThrow({
+        where: { childId: child.id, tier: "POKE" },
+      });
+      // 抓取力拉满，保证必中——这里测的是返还，不是抓不抓得到
+      await prisma.ballType.update({ where: { id: poke.id }, data: { catchPower: 99 } });
+
+      const day = todayDateString();
+      await ensureTodayEncounters(child.id, day);
+      const first = await prisma.dailyEncounter.findFirstOrThrow({
+        where: { childId: child.id },
+        orderBy: { slot: "asc" },
+      });
+      await throwBall(first.id, poke.id, child.id);
+      const owned = await prisma.caught.findFirstOrThrow({
+        where: { childId: child.id, status: "OWNED" },
+      });
+
+      // 再造一只遇怪，硬改成同一个种类
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+      await ensureTodayEncounters(child.id, day);
+      const second = await prisma.dailyEncounter.findFirstOrThrow({
+        where: { childId: child.id },
+        orderBy: { slot: "asc" },
+      });
+      await prisma.dailyEncounter.update({
+        where: { id: second.id },
+        data: { speciesId: owned.speciesId, nameZh: owned.nameZh, rarity: owned.rarity },
+      });
+
+      const dupBefore = await prisma.pointsLedger.count({
+        where: { childId: child.id, type: "POKEDEX_DUPLICATE" },
+      });
+      const balBefore =
+        (await prisma.pointsLedger.aggregate({
+          where: { childId: child.id },
+          _sum: { amount: true },
+        }))._sum.amount ?? 0;
+
+      await throwBall(second.id, poke.id, child.id);
+
+      const sameCount = await prisma.caught.count({
+        where: { childId: child.id, speciesId: owned.speciesId, status: "OWNED" },
+      });
+      expect("确实抓到了第二只同种（测试前提成立）", sameCount, 2);
+      expect(
+        "重复返还流水条数",
+        (await prisma.pointsLedger.count({
+          where: { childId: child.id, type: "POKEDEX_DUPLICATE" },
+        })) - dupBefore,
+        0
+      );
+      // 余额只应该减少一个球钱（这一档还没到「单种集齐」的门槛，不会有别的进账）
+      const balAfter =
+        (await prisma.pointsLedger.aggregate({
+          where: { childId: child.id },
+          _sum: { amount: true },
+        }))._sum.amount ?? 0;
+      expect("抓到重复后余额变化（只扣一个球钱）", balAfter - balBefore, -poke.cost);
+
+      await prisma.ballType.update({
+        where: { id: poke.id },
+        data: { catchPower: poke.catchPower },
+      });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+    }
 
     // ---------- 自动审批 ----------
     //

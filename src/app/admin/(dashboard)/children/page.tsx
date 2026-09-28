@@ -1,12 +1,18 @@
 import { TaskStatus } from "@/generated/prisma/client";
 import { getActiveChild, listChildren } from "@/lib/child";
 import { prisma } from "@/lib/db";
+import {
+  economyRate,
+  pokedexMilestoneBonus,
+  pokedexMilestoneStep,
+} from "@/lib/economy";
 import { requestOrigin } from "@/lib/origin";
 
 import { AutoApproveToggle } from "./AutoApproveToggle";
 import { ChildForm } from "./ChildForm";
 import { ChildRow } from "./ChildRow";
 import { DailyGoalForm } from "./DailyGoalForm";
+import { MilestoneForm } from "./MilestoneForm";
 import { PenaltyToggle } from "./PenaltyToggle";
 import { ThemePicker } from "./ThemePicker";
 
@@ -18,6 +24,8 @@ export default async function ChildrenAdminPage() {
   // 一个孩子都还没有时 getActiveChild 会抛错，所以这一页（也只有这一页）要能在没有孩子的
   // 情况下渲染——新注册的账号第一件事就是落到这里建档。
   const active = children.length > 0 ? await getActiveChild() : null;
+  // 里程碑表单要显示"不固定时会用什么值"，所以先算一遍自动值
+  const rate = active ? await economyRate(active.id) : 0;
   // 开了自动审批时要告诉家长"还压着几条待审核"——那些不会被自动放行
   const pendingReviewCount = active
     ? await prisma.dailyTask.count({
@@ -39,6 +47,15 @@ export default async function ChildrenAdminPage() {
 
       {active && <ThemePicker current={active.theme} childName={active.name} />}
       {active && <DailyGoalForm childName={active.name} current={active.dailyGoalPoints} />}
+      {active && active.theme === "POKEDEX" && (
+        <MilestoneForm
+          childName={active.name}
+          bonus={active.pokedexMilestoneBonus}
+          step={active.pokedexMilestoneStep}
+          autoBonus={pokedexMilestoneBonus(rate)}
+          autoStep={pokedexMilestoneStep(null)}
+        />
+      )}
       {active && (
         <AutoApproveToggle
           enabled={active.autoApprove}

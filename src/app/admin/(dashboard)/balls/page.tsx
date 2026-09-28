@@ -6,11 +6,10 @@ import { getActiveChild } from "@/lib/child";
 import { todayAsUtcDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
 import { ensureBallTypes } from "@/lib/bootstrap";
-import { economyRate, pokedexMilestoneBonus } from "@/lib/economy";
+import { economyRate, pokedexMilestoneBonus, pokedexMilestoneStep } from "@/lib/economy";
 import { levelProgress, totalEarned } from "@/lib/level";
 import {
   masteryGoal,
-  POKEDEX_MILESTONE_STEP,
   RARITY_LABELS,
   REGIONS,
   regionAt,
@@ -31,7 +30,9 @@ export default async function BallsAdminPage() {
 
   const ceiling = speciesCeilingForLevel(child.level);
   const regionName = regionAt(ceiling);
-  const milestoneBonus = pokedexMilestoneBonus(await economyRate(child.id));
+  const rate = await economyRate(child.id);
+  const milestoneBonus = pokedexMilestoneBonus(rate, child.pokedexMilestoneBonus);
+  const milestoneStep = pokedexMilestoneStep(child.pokedexMilestoneStep);
 
   const [balls, counts, speciesCount, caught, earned, todaysEncounters] = await Promise.all([
     prisma.ballType.findMany({ where: { childId: child.id } }),
@@ -67,7 +68,7 @@ export default async function BallsAdminPage() {
   ).length;
   const toNextMilestone =
     // 同孩子端：整除时 || 会把结果变成 0，"再收集 0 种"是错的
-    POKEDEX_MILESTONE_STEP - (distinct % POKEDEX_MILESTONE_STEP);
+    milestoneStep - (distinct % milestoneStep);
   const nextCeiling = speciesCeilingForLevel(child.level + 1);
   const progress = levelProgress(child.level, earned);
   const byBall = new Map(counts.map((c) => [c.ballTypeId, c._count._all]));
@@ -78,7 +79,7 @@ export default async function BallsAdminPage() {
 
       <p className="pixel-card bg-amber-50 p-4 text-sm text-slate-600">
         当前开放到 <b>{regionName}地区</b>，共 {speciesCount} 只宝可梦（收集到 80% 会自动开放下一个地区）。
-        孩子每收集满 <b>{POKEDEX_MILESTONE_STEP} 个不同种类</b> 奖励 {milestoneBonus} 阳光——
+        孩子每收集满 <b>{milestoneStep} 个不同种类</b> 奖励 {milestoneBonus} 阳光——
         这个数字按当前日薪自动算，改任务模板会跟着变，不用手工维护。
         <br />
         <b>这里只能改价格和上下架</b>——四个等级的抓取倍率是玩法平衡的一部分，改了很容易把经济搞坏；

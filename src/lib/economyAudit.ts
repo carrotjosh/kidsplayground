@@ -5,21 +5,17 @@ import {
   economyRate,
   maxDailyPoints,
   observedEarnRate,
-  duplicateRefund,
   monthlyBonusPoints,
   PRICE_BANDS,
   pokedexMilestoneBonus,
+  pokedexMilestoneStep,
   refreshCosts,
   rewardBand,
   speciesMasteryBonus,
   type PriceBandKey,
 } from "@/lib/economy";
 import { gardenSetSize, gardenSize } from "@/lib/garden";
-import {
-  catchProbability,
-  expectedCatchRate,
-  POKEDEX_MILESTONE_STEP,
-} from "@/lib/pokedex";
+import { catchProbability, expectedCatchRate } from "@/lib/pokedex";
 
 /**
  * 经济体检：把家长可改的那些价格换算成「几天工资」，和设计区间对一下，并校验几条硬不变量。
@@ -73,7 +69,6 @@ export type EconomyAudit = {
     refresh: number[];
     milestone: number;
     mastery: Record<number, number>;
-    duplicate: Record<number, number>;
   };
   groups: { title: string; items: PricedItem[] }[];
   findings: AuditFinding[];
@@ -137,6 +132,8 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       where: { id: childId },
       select: {
         dailyGoalPoints: true,
+        pokedexMilestoneBonus: true,
+        pokedexMilestoneStep: true,
         priceBaselineRate: true,
         theme: true,
         gardenStage: true,
@@ -199,19 +196,9 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     (min, b) => (min === null || b.cost < min ? b.cost : min),
     null
   );
-  for (const ball of balls) {
-    for (const rarity of [1, 2, 3, 4]) {
-      const expected = catchProbability(rarity, ball.catchPower, 0) * duplicateRefund(rate, rarity);
-      if (expected > ball.cost * MAX_RETURN_RATIO) {
-        findings.push({
-          level: "error",
-          title: `${ball.title} 打「${["", "普通", "少见", "稀有", "传说"][rarity]}」能赚阳光`,
-          detail: `期望回报 ${expected.toFixed(1)} 阳光，而球只要 ${ball.cost}。孩子一直扔就能刷阳光，打卡就没意义了。把这种球的价格提到 ${Math.ceil(expected / MAX_RETURN_RATIO)} 以上。`,
-        });
-        break; // 同一种球只报一次，不用四档都刷屏
-      }
-    }
-  }
+  // 重复返还已经取消了（见 lib/pokedex.ts 的「已移除」那段），所以扔球那条线上
+  // 只剩里程碑一项收入，下面只校验它。
+  void catchProbability;
   // 里程碑也是扔球带来的收入，必须一起算进这条不变量。
   //
   // 漏过一次：原来只校验"重复返还 × 抓取率 vs 球价"，而**前期几乎没有重复**
@@ -222,19 +209,20 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
   // 摊法：前期每只抓到的都算新种，所以 STEP / p̄ 就是凑够一个里程碑要扔的球数
   // （p̄ = 这种球的加权平均抓取率），里程碑摊到每个球上就是 M × p̄ / STEP。
   if (cheapest !== null && child.theme === "POKEDEX") {
-    const milestone = pokedexMilestoneBonus(rate);
+    const milestone = pokedexMilestoneBonus(rate, child.pokedexMilestoneBonus);
+    const step = pokedexMilestoneStep(child.pokedexMilestoneStep);
     for (const ball of balls) {
-      const perBall = (milestone * expectedCatchRate(ball.catchPower)) / POKEDEX_MILESTONE_STEP;
+      const perBall = (milestone * expectedCatchRate(ball.catchPower)) / step;
       if (perBall > ball.cost * MAX_RETURN_RATIO) {
         const maxBonus = Math.floor(
-          (ball.cost * MAX_RETURN_RATIO * POKEDEX_MILESTONE_STEP) / expectedCatchRate(ball.catchPower)
+          (ball.cost * MAX_RETURN_RATIO * step) / expectedCatchRate(ball.catchPower)
         );
         findings.push({
           level: "error",
           title: `图鉴里程碑太高，用${ball.title}刷就能赚阳光`,
           detail:
-            `每 ${POKEDEX_MILESTONE_STEP} 种发 ${milestone} 阳光，而平均 ` +
-            `${(POKEDEX_MILESTONE_STEP / expectedCatchRate(ball.catchPower)).toFixed(0)} 个${ball.title}` +
+            `每 ${step} 种发 ${milestone} 阳光，而平均 ` +
+            `${(step / expectedCatchRate(ball.catchPower)).toFixed(0)} 个${ball.title}` +
             `就能凑够——摊到每个球 ${perBall.toFixed(1)} 阳光，球本身才 ${ball.cost}。` +
             `孩子一直扔就能刷阳光，打卡就没意义了。里程碑降到 ${maxBonus} 以下，` +
             `或者把${ball.title}提价。`,
@@ -366,12 +354,6 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
         Object.keys(AMOUNT_MULTIPLIERS.speciesMastery).map((r) => [
           Number(r),
           speciesMasteryBonus(rate, Number(r)),
-        ])
-      ),
-      duplicate: Object.fromEntries(
-        Object.keys(AMOUNT_MULTIPLIERS.duplicateRefund).map((r) => [
-          Number(r),
-          duplicateRefund(rate, Number(r)),
         ])
       ),
     },

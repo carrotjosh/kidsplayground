@@ -184,12 +184,6 @@ export const AMOUNT_MULTIPLIERS = {
   pokedexMilestone: 0.8,
   /** 同一种攒够目标数量的"收集完成"奖励，按稀有度递增。 */
   speciesMastery: { 1: 1.6, 2: 3.2, 3: 6, 4: 20 } as Record<number, number>,
-  /**
-   * 抓到重复的返还。
-   * 这一组必须保持**远小于**最便宜的球价，否则扔球会变成赚钱手段、整个经济崩盘。
-   * 球价是家长可改的，所以这条不能只靠这里的数值保证——lib/economyAudit.ts 里有实时校验。
-   */
-  duplicateRefund: { 1: 0.12, 2: 0.32, 3: 0.8, 4: 2.4 } as Record<number, number>,
 } as const;
 
 /** 把「天工资」换算成阳光。至少 1，避免出现 0 阳光的奖励或 0 阳光的刷新。 */
@@ -205,16 +199,27 @@ export function refreshCosts(rate: number): number[] {
   return AMOUNT_MULTIPLIERS.refresh.map((m) => amount(rate, m));
 }
 
-export function pokedexMilestoneBonus(rate: number): number {
+/**
+ * 图鉴里程碑的奖励金额。`override` 来自 Child.pokedexMilestoneBonus。
+ *
+ * 传了就用传的、**不再随基准浮动**——这是家长的显式决定，不该被
+ * 「达标线改了所以奖励也跟着改」覆盖掉。没传就按基准的 0.8 天工资算。
+ */
+export function pokedexMilestoneBonus(rate: number, override?: number | null): number {
+  if (override != null && override > 0) return override;
   return amount(rate, AMOUNT_MULTIPLIERS.pokedexMilestone);
 }
 
-export function speciesMasteryBonus(rate: number, rarity: number): number {
-  return amount(rate, AMOUNT_MULTIPLIERS.speciesMastery[rarity] ?? AMOUNT_MULTIPLIERS.speciesMastery[1]);
+/** 每集齐多少个**不同种类**发一次里程碑。override 来自 Child.pokedexMilestoneStep。 */
+export function pokedexMilestoneStep(override?: number | null): number {
+  return override != null && override > 0 ? override : DEFAULT_MILESTONE_STEP;
 }
 
-export function duplicateRefund(rate: number, rarity: number): number {
-  return amount(rate, AMOUNT_MULTIPLIERS.duplicateRefund[rarity] ?? AMOUNT_MULTIPLIERS.duplicateRefund[1]);
+/** 默认每 8 种发一次。放在这里而不是 pokedex.ts，是为了和金额挨在一起、改的时候不会漏。 */
+export const DEFAULT_MILESTONE_STEP = 8;
+
+export function speciesMasteryBonus(rate: number, rarity: number): number {
+  return amount(rate, AMOUNT_MULTIPLIERS.speciesMastery[rarity] ?? AMOUNT_MULTIPLIERS.speciesMastery[1]);
 }
 
 /**
