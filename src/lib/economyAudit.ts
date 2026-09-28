@@ -15,7 +15,11 @@ import {
   type PriceBandKey,
 } from "@/lib/economy";
 import { gardenSetSize, gardenSize } from "@/lib/garden";
-import { catchProbability, expectedCatchRate } from "@/lib/pokedex";
+import {
+  catchProbability,
+  expectedCatchRate,
+  MAX_ATTEMPTS_PER_ENCOUNTER,
+} from "@/lib/pokedex";
 
 /**
  * 经济体检：把家长可改的那些价格换算成「几天工资」，和设计区间对一下，并校验几条硬不变量。
@@ -238,6 +242,35 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
       title: "一种精灵球都没有上架",
       detail: "孩子进图鉴页会什么都买不了。去「精灵球」页至少上架一种。",
     });
+  }
+
+  // ---- 不变量 1b：好球不能"买了就是亏" ----
+  //
+  // 一次遇怪只有 3 次机会，所以贵球的价值是**更高的上限**，不是更划算。
+  // 但价格涨得比抓取力快太多的话，好球就纯粹是坑：原来 8/20/45 时
+  // 单位抓取力是 8.0 / 12.5 / 17.3，孩子一直只用精灵球——那不是偷懒，
+  // 是最优解，而"选哪个球"这个决策就此失效。花了钱买的球没人买，
+  // 界面上完全看不出来。
+  //
+  // 大师球不参与：它是必中，catchPower 99 只是个占位，比出来没有意义。
+  const ladder = balls
+    .filter((b) => b.tier !== BallTier.MASTER && b.catchPower > 0)
+    .sort((a, b) => a.catchPower - b.catchPower);
+  const MAX_TIER_MARKUP = 1.6;
+  for (let i = 1; i < ladder.length; i++) {
+    const lo = ladder[i - 1], hi = ladder[i];
+    const loUnit = lo.cost / lo.catchPower, hiUnit = hi.cost / hi.catchPower;
+    if (loUnit > 0 && hiUnit / loUnit > MAX_TIER_MARKUP) {
+      findings.push({
+        level: "warn",
+        title: `${hi.title}比${lo.title}贵得不成比例，孩子不会买`,
+        detail:
+          `每单位抓取力：${lo.title} ${loUnit.toFixed(1)}，${hi.title} ${hiUnit.toFixed(1)}` +
+          `（贵 ${(hiUnit / loUnit).toFixed(1)} 倍）。一次遇怪只有 ${MAX_ATTEMPTS_PER_ENCOUNTER} 次机会，` +
+          `差这么多的话一直扔便宜球才是最优解，好球就成了摆设。` +
+          `把${hi.title}降到 ${Math.floor(loUnit * MAX_TIER_MARKUP * hi.catchPower)} 以下。`,
+      });
+    }
   }
 
   // ---- 不变量 2：花园必须能集齐 ----
