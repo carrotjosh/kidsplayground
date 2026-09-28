@@ -223,6 +223,23 @@ async function main() {
     expectFinding((await auditEconomy(child.id)).findings, "能赚阳光", "球价 1 → 报出「扔球能赚阳光」");
     await prisma.ballType.update({ where: { id: poke.id }, data: { cost: poke.cost } });
 
+    // (1a) 好球贵得不成比例 → 孩子不会买，"选哪个球"的决策失效
+    const great = await prisma.ballType.findFirstOrThrow({
+      where: { childId: child.id, tier: "GREAT" },
+    });
+    await prisma.ballType.update({ where: { id: great.id }, data: { cost: 60 } });
+    expectFinding(
+      (await auditEconomy(child.id)).findings,
+      "贵得不成比例",
+      "超级球抬到 60 → 报出「好球买了就是亏」"
+    );
+    await prisma.ballType.update({ where: { id: great.id }, data: { cost: great.cost } });
+    if (!(await auditEconomy(child.id)).findings.some((f) => f.title.includes("贵得不成比例"))) {
+      pass("默认球价（8/16/33）的梯度是合理的");
+    } else {
+      fail("默认球价", "被判定成不成比例");
+    }
+
     // (1b) 里程碑太高 → 扔球刷里程碑就能赚阳光
     //
     // 这条是补上去的：原来"扔球不能赚钱"只校验重复返还，而前期几乎没有重复

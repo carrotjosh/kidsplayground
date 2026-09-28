@@ -85,9 +85,23 @@ if (DEFAULT_PLANT_TYPES.length < GARDEN_STAGES.length + INITIAL_ACTIVE_PLANT_TYP
  * 它是"攒很久换一只想要的传说"的兜底，不是日常消耗品。
  */
 const DEFAULT_BALL_TYPES = [
+/*
+ * 价格必须大致跟着 catchPower 走，只留一点点溢价。
+ *
+ * 原来是 8/20/45（单位抓取力 8.0 / 12.5 / 17.3），结果好球买了就是亏：
+ * 一次遇怪只有 3 次机会，POKE×3 花 24 拿 39%（打 ★3），而 GREAT×3 要花 60
+ * 才多 17 个百分点。孩子于是一直只用精灵球——那不是偷懒，是最优解，
+ * 而"选哪个球"这个决策就此失效。
+ *
+ * 现在 8/16/33（单位抓取力 8.0 / 10.0 / 12.7）：升一档的边际成本从
+ * "+36 换 +17 个百分点"降到 "+24 换 +17"，好球值这个价了。
+ * 溢价保留是应该的——3 次机会封顶的前提下，好球能达到便宜球够不到的成功率。
+ *
+ * 大师球是另一类东西（必中），不参与这条比例，见 economyAudit 里的校验。
+ */
   { tier: BallTier.POKE, title: "精灵球", emoji: "⚪", cost: 8, catchPower: 1 },
-  { tier: BallTier.GREAT, title: "超级球", emoji: "🔵", cost: 20, catchPower: 1.6 },
-  { tier: BallTier.ULTRA, title: "高级球", emoji: "🟡", cost: 45, catchPower: 2.6 },
+  { tier: BallTier.GREAT, title: "超级球", emoji: "🔵", cost: 16, catchPower: 1.6 },
+  { tier: BallTier.ULTRA, title: "高级球", emoji: "🟡", cost: 33, catchPower: 2.6 },
   { tier: BallTier.MASTER, title: "大师球", emoji: "🟣", cost: 200, catchPower: 99 },
 ];
 
