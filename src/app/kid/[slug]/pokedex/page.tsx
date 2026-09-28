@@ -10,12 +10,16 @@ import { getChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { checkLevelUp } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
-import { economyRate, pokedexMilestoneBonus, refreshCosts } from "@/lib/economy";
+import {
+  economyRate,
+  pokedexMilestoneBonus,
+  pokedexMilestoneStep,
+  refreshCosts,
+} from "@/lib/economy";
 import {
   catchProbability,
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
-  POKEDEX_MILESTONE_STEP,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
   REGIONS,
@@ -51,7 +55,8 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
 
   // 各种奖励金额都跟着日薪走（见 lib/economy.ts），家长改了任务模板会自动跟上
   const rate = await economyRate(child.id);
-  const milestoneBonus = pokedexMilestoneBonus(rate);
+  const milestoneBonus = pokedexMilestoneBonus(rate, child.pokedexMilestoneBonus);
+  const milestoneStep = pokedexMilestoneStep(child.pokedexMilestoneStep);
   // 收集进度的分母只算**等级已经放出来的**那些。用全库 386 当分母的话，
   // 刚开始玩的孩子看到的是 3/386 的进度条，等于一上来就告诉他"你永远集不完"。
   const ceiling = speciesCeilingForLevel(level);
@@ -84,7 +89,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   const toNextMilestone =
     // 不能写成 (n % STEP || STEP)：n 是 STEP 的整数倍时那个 || 会让结果变成 0，
     // 界面上就成了"再收集 0 种"。取模本身在整除时就返回 0，STEP - 0 = STEP 才是对的。
-    POKEDEX_MILESTONE_STEP - (distinctCount % POKEDEX_MILESTONE_STEP);
+    milestoneStep - (distinctCount % milestoneStep);
 
   return (
     // 框固定一屏。上半截（进度 + 今天遇到谁）是每天都要看的，必须常驻；

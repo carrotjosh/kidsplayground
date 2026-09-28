@@ -107,6 +107,41 @@ export async function setAutoApproveAction(enabled: boolean) {
   revalidateEverything();
 }
 
+/**
+ * 固定或解除固定「图鉴里程碑」的金额和步长。
+ *
+ * 空字符串 = 解除固定，回到按达标线自动算。不用 0 表示"清空"：
+ * 0 是个合法的想法（"我不想发奖励"），而那应该用别的方式表达，
+ * 不该和"没设置"共用一个值。
+ */
+export async function setMilestoneAction(
+  _prev: string | null,
+  formData: FormData
+): Promise<string | null> {
+  const session = await requireParentSession();
+  const child = await getActiveChild();
+
+  const parse = (raw: FormDataEntryValue | null, label: string) => {
+    const t = String(raw ?? "").trim();
+    if (t === "") return { ok: true as const, value: null };
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < 1) return { ok: false as const, msg: `${label}要填一个 1 以上的整数` };
+    return { ok: true as const, value: n };
+  };
+
+  const bonus = parse(formData.get("bonus"), "奖励阳光");
+  if (!bonus.ok) return bonus.msg;
+  const step = parse(formData.get("step"), "每几种发一次");
+  if (!step.ok) return step.msg;
+
+  await prisma.child.updateMany({
+    where: { id: child.id, userId: effectiveUserId(session) },
+    data: { pokedexMilestoneBonus: bonus.value, pokedexMilestoneStep: step.value },
+  });
+  revalidateEverything();
+  return null;
+}
+
 export async function setPenaltyEnabledAction(enabled: boolean) {
   const session = await requireParentSession();
   const child = await getActiveChild();
