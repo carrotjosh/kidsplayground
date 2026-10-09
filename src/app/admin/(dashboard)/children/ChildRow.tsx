@@ -105,6 +105,13 @@ export function ChildRow({
           改名
         </button>
 
+        <a
+          href={`/admin/children/${child.id}/export`}
+          className="pixel-btn bg-white px-3 py-1 text-sm text-slate-700"
+        >
+          导出数据
+        </a>
+
         <form ref={deleteFormRef} action={deleteChildAction.bind(null, child.id)}>
           <button
             type="button"
@@ -113,7 +120,7 @@ export function ChildRow({
             onClick={() => {
               if (
                 window.confirm(
-                  `确定删除「${child.name}」吗？\n\n会同时删掉 TA 的全部打卡记录、阳光流水、花园和兑换历史，无法恢复。`
+                  `确定删除「${child.name}」吗？建议先点"导出数据"备份。\n\n会同时删掉 TA 的全部打卡记录、阳光流水、花园和兑换历史，无法恢复。`
                 )
               ) {
                 deleteFormRef.current?.requestSubmit();

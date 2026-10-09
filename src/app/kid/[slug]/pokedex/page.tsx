@@ -273,6 +273,9 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
               ballTitles: Object.fromEntries(
                 balls.map((b) => [b.id, <Pinyin key={b.id} text={b.title} />])
               ),
+              // 纯字符串版本，给 window.confirm 用——它只能接受字符串，
+              // ballTitles 那份是带拼音 <ruby> 标注的 ReactNode，塞不进模板字符串。
+              ballNames: Object.fromEntries(balls.map((b) => [b.id, b.title])),
               names: Object.fromEntries(
                 encounters.map((e) => [e.id, <Pinyin key={e.id} text={e.nameZh} />])
               ),

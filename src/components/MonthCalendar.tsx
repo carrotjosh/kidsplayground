@@ -177,6 +177,13 @@ export function MonthCalendar({
 
             const body = (
               <>
+                {/* 左上角角标：达标日加一个 ✓，别让"达标/没达标"只靠颜色区分——
+                    色弱的家长/孩子分不清 bg-nes-green 和 bg-nes-yellow */}
+                {!day.isFuture && day.reachedGoal && (
+                  <span className="absolute left-0.5 top-0 text-[9px] font-bold leading-tight lg:text-xs">
+                    ✓
+                  </span>
+                )}
                 {/* 右上角角标：休息日（法定节假日 + 双休日）标"休"，调休上学的周末标"学" */}
                 {isRestDay && (
                   <span
@@ -235,7 +242,7 @@ export function MonthCalendar({
           <i
             className={`inline-block border-2 border-nes-black bg-nes-green ${big ? "h-4 w-4" : "h-3 w-3"}`}
           />
-          达标（≥{dailyGoalPoints} 阳光）
+          ✓ 达标（≥{dailyGoalPoints} 阳光）
         </span>
         <span className="flex items-center gap-1.5">
           <i
