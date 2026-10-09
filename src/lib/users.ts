@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from "crypto";
 
+import type { User } from "@/generated/prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ActionError } from "@/lib/errors";
@@ -136,11 +137,51 @@ export async function createInvitedUser(email: string, password: string, inviteC
   });
 }
 
-export async function authenticate(email: string, password: string) {
+/** 连续失败这么多次就锁一段时间，防在线爆破密码。 */
+const MAX_LOGIN_ATTEMPTS = 10;
+const LOGIN_LOCKOUT_MINUTES = 15;
+
+export type AuthResult = { user: User } | { error: "locked" } | { error: "invalid" };
+
+/**
+ * 登录校验，带防爆破锁定。
+ *
+ * 哈希校验必须无条件跑一遍（不能因为账号已被锁定就提前 return）——
+ * 否则"被锁定"和"密码错"两种情况的响应时间不一样，等于从时序上告诉
+ * 攻击者这个邮箱存在且正在被限流，这和下面这行本来要防的是同一类泄露。
+ */
+export async function authenticate(email: string, password: string): Promise<AuthResult> {
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   // 即使邮箱不存在也跑一次哈希校验，避免用响应快慢探测出哪些邮箱注册过。
   const ok = await verifyPassword(password, user?.passwordHash ?? "pbkdf2$1$AA==$AA==");
-  return user && ok ? user : null;
+
+  if (!user) return { error: "invalid" };
+
+  const now = new Date();
+  if (user.lockedUntil && user.lockedUntil > now) {
+    return { error: "locked" };
+  }
+
+  if (!ok) {
+    const attempts = user.failedLoginAttempts + 1;
+    const lockedUntil =
+      attempts >= MAX_LOGIN_ATTEMPTS
+        ? new Date(now.getTime() + LOGIN_LOCKOUT_MINUTES * 60_000)
+        : null;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: attempts, lockedUntil },
+    });
+    return { error: lockedUntil ? "locked" : "invalid" };
+  }
+
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
+  return { user };
 }
 
 export async function changePassword(userId: string, current: string, next: string) {

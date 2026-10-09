@@ -58,6 +58,8 @@ export type EncounterView = {
 export type BoardLabels = {
   /** 按球 id 索引的球名（服务端标好拼音） */
   ballTitles: Record<string, ReactNode>;
+  /** 按球 id 索引的纯字符串球名，给 window.confirm 用（它接受不了 ReactNode） */
+  ballNames: Record<string, string>;
   /** 按 encounter id 索引的宝可梦名 */
   names: Record<string, ReactNode>;
   /** 按 encounter id 索引的"特性 / 技能"说明 */
@@ -215,6 +217,14 @@ function EncounterCard({
                   name="ballId"
                   value={ball.id}
                   disabled={!affordable || isPending}
+                  onClick={(e) => {
+                    // 孩子端每个花阳光的动作都要二次确认（见 ConfirmActionButton/
+                    // RefreshButton）——扔球之前唯独漏了这一个，补上，不拆表单，
+                    // 继续靠 name/value 把选中的球交给同一个 formAction。
+                    if (!window.confirm(`花 ${ball.cost} 阳光扔${labels.ballNames[ball.id]}，确定吗？`)) {
+                      e.preventDefault();
+                    }
+                  }}
                   className={`pixel-btn flex flex-col items-center gap-0.5 px-1 py-2 ${
                     affordable && !isPending
                       ? "bg-white text-slate-800"

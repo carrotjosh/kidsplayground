@@ -17,8 +17,11 @@ export async function loginAction(
 
   if (!email || !password) return "请填写邮箱和密码";
 
-  const user = await authenticate(email, password);
-  if (!user) return "邮箱或密码不对";
+  const result = await authenticate(email, password);
+  if ("error" in result) {
+    return result.error === "locked" ? "尝试次数太多，请 15 分钟后再试" : "邮箱或密码不对";
+  }
+  const user = result.user;
 
   await setSessionCookie({ userId: user.id, role: isKidDevice ? "kid" : "parent" });
   redirect(isKidDevice ? "/kid" : "/admin");

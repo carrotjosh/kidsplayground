@@ -134,17 +134,35 @@ export default async function AdminDashboardPage() {
                 <span>
                   {task.emoji} {task.title}（{task.points} 阳光）
                 </span>
-                <span
-                  className={
-                    task.status === "DONE"
-                      ? "text-emerald-600"
+                {task.status === "PENDING" ? (
+                  // 家长手机上瞄一眼这个列表最自然的动作就是"刚好看着孩子做完了，
+                  // 顺手点掉"——之前这里是纯文字，想标记完成得跳到「打卡记录」页。
+                  // approveAction 本来就兼容"直接补打卡"这个入口，见 history/actions.ts。
+                  <form action={approveAction.bind(null, task.id)}>
+                    <button
+                      type="submit"
+                      className="pixel-btn bg-nes-green px-2 py-0.5 text-xs text-white"
+                    >
+                      标记完成
+                    </button>
+                  </form>
+                ) : (
+                  <span
+                    className={
+                      task.status === "DONE"
+                        ? "text-emerald-600"
+                        : task.status === "PENDING_REVIEW"
+                          ? "text-amber-600"
+                          : "text-slate-400"
+                    }
+                  >
+                    {task.status === "DONE"
+                      ? "已完成"
                       : task.status === "PENDING_REVIEW"
-                        ? "text-amber-600"
-                        : "text-slate-400"
-                  }
-                >
-                  {task.status === "DONE" ? "已完成" : task.status === "PENDING_REVIEW" ? "待审核" : "未完成"}
-                </span>
+                        ? "待审核"
+                        : "未完成"}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

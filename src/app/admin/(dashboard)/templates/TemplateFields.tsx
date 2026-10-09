@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { EmojiPicker, TASK_EMOJI_GROUPS } from "@/components/EmojiPicker";
@@ -91,6 +92,15 @@ export function TemplateFields({ initial }: { initial?: TemplateFieldValues }) {
             defaultValue={initial?.points ?? ""}
             className="w-28 rounded-none border-2 border-nes-black px-3 py-2"
           />
+          {/* 这是朋友家长通过邀请码注册后唯一会亲手碰到的、影响定价基准的输入框——
+              GitHub README 里那条"改任务会打乱日薪"的警告他们根本看不到 */}
+          <span className="text-xs text-slate-400">
+            会改变每天能挣的阳光总量，改完可以去
+            <Link href="/admin/economy" className="underline">
+              经济体检
+            </Link>
+            看看价格要不要跟着调
+          </span>
         </label>
       </div>
 

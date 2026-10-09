@@ -27,6 +27,11 @@ model User {
   notifyWebhookUrl String?
   createdAt    DateTime @default(now())
 
+  // 登录防爆破：连续失败达到阈值就锁一段时间。生产跑的是 Vercel serverless，
+  // 没有常驻进程能存内存计数器，所以状态必须落库（见 lib/users.ts 的 authenticate）。
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   children Child[]
 
   invitesCreated InviteCode[] @relation("InviteCreator")

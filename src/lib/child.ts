@@ -187,6 +187,9 @@ export async function deleteChild(childId: string) {
     prisma.redemption.deleteMany({ where: { childId } }),
     prisma.plant.deleteMany({ where: { childId } }),
     prisma.caught.deleteMany({ where: { childId } }),
+    // 图鉴主题的孩子只要打开过图鉴页就会生成当天的遇怪记录；这张表的外键是
+    // ON DELETE RESTRICT，漏删会导致删除直接报外键冲突、整个事务回滚。
+    prisma.dailyEncounter.deleteMany({ where: { childId } }),
     prisma.dailyTask.deleteMany({ where: { childId } }),
     prisma.reward.deleteMany({ where: { childId } }),
     prisma.plantType.deleteMany({ where: { childId } }),
