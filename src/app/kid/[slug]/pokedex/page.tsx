@@ -20,6 +20,7 @@ import {
   catchProbability,
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
+  masteryGoal,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
   REGIONS,
@@ -81,6 +82,12 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
 
   const owned = caught.filter((c) => c.status === CaughtStatus.OWNED);
   const distinctCount = new Set(owned.map((c) => c.speciesId)).size;
+  // 每一种各抓到几只。遇怪卡上要显示「已经有 N 只」，
+  // 在这儿一次数完，别在循环里逐只查库。
+  const ownedBySpecies = owned.reduce<Record<number, number>>((acc, c) => {
+    acc[c.speciesId] = (acc[c.speciesId] ?? 0) + 1;
+    return acc;
+  }, {});
   // 今天刷了几次 = 当天最大的 refreshRound（见 schema 里的注释）
   const refreshesUsed = Math.max(0, ...encounters.map((e) => e.refreshRound));
   const costs = refreshCosts(rate);
@@ -241,6 +248,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
               defense: e.defense,
               speed: e.speed,
               isShiny: e.isShiny,
+              ownedCount: ownedBySpecies[e.speciesId] ?? 0,
               attemptsLeft: MAX_ATTEMPTS_PER_ENCOUNTER - e.attemptsUsed,
               status: e.status,
             }))}
@@ -273,6 +281,24 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
                   e.id,
                   <Pinyin key={e.id} text={`${e.ability} · ${e.moveName} ${e.movePower}`} />,
                 ])
+              ),
+              // 已经有几只同种。顺带把「集满几只有奖励」说出来——
+              // 那是重复抓同一种唯一还剩的回报（重复返还已经取消了），
+              // 不写出来的话孩子看不出第 3 只和第 1 只有什么区别。
+              ownedHint: Object.fromEntries(
+                encounters.map((e) => {
+                  const n = ownedBySpecies[e.speciesId] ?? 0;
+                  const goal = masteryGoal(e.rarity);
+                  const text =
+                    n === 0
+                      ? "这一种我还没有！"
+                      : n >= goal
+                        ? `已经有 ${n} 只，这一种集满啦`
+                        // 「只有」连写会被分词器当成一个词，「只」被标成 zhǐ——
+                        // 而这里是量词 zhī。孩子正在认字，这会教错，所以加个「就」隔开。
+                        : `已经有 ${n} 只，集满 ${goal} 只就有奖励`;
+                  return [e.id, <Pinyin key={e.id} text={text} />];
+                })
               ),
               // 预渲染每种剩余次数的文案：函数没法传给客户端组件
               attemptsLeft: Object.fromEntries(

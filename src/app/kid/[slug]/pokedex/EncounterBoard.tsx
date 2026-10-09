@@ -51,6 +51,8 @@ export type EncounterView = {
   isShiny: boolean;
   attemptsLeft: number;
   status: "AVAILABLE" | "CAUGHT" | "FLED";
+  /** 这一种**已经抓到过几只**。0 = 全新的种类，孩子最该知道的就是这个。 */
+  ownedCount: number;
 };
 
 export type BoardLabels = {
@@ -60,6 +62,8 @@ export type BoardLabels = {
   names: Record<string, ReactNode>;
   /** 按 encounter id 索引的"特性 / 技能"说明 */
   details: Record<string, ReactNode>;
+  /** 按 encounter id 索引的"已经抓到几只同种"。和上面几个一样要在服务端标好拼音 */
+  ownedHint: Record<string, ReactNode>;
   /** 按剩余次数索引的提示语。**不能传函数**——函数跨不过服务端→客户端的边界，
    *  所以在服务端把 1..N 每种情况都渲染好 */
   attemptsLeft: Record<number, ReactNode>;
@@ -154,6 +158,16 @@ function EncounterCard({
             {encounter.isShiny && <> · {labels.shiny}</>}
           </p>
           <p className="kid-text kid-note text-slate-500">{labels.details[encounter.id]}</p>
+          {/* 已经有几只同种。全新种类单独标成绿色——
+              「这只我还没有」是孩子决定要不要掏好球时最在意的一条，
+              不该和特性/技能混在同一行灰字里。 */}
+          <p
+            className={`kid-text kid-label ${
+              encounter.ownedCount === 0 ? "font-bold text-nes-green" : "text-slate-600"
+            }`}
+          >
+            {labels.ownedHint[encounter.id]}
+          </p>
           {/* 四项能力值，给"值不值得用好球"一个判断依据 */}
           <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
             {[
