@@ -92,7 +92,7 @@ export async function getChildStartDate(child: { id: string; createdAt: Date }):
  * 算出某个月里"本来就该打卡"的日子。
  *
  * 为什么不能直接数 DailyTask 的行数：DailyTask 是懒生成的——只有孩子打开 App、
- * 或者花园结算回填时才会落库。月中的时候未来的日子根本还没有行，没人开 App 的日子也没有。
+ * 或者纪律结算回填时才会落库。月中的时候未来的日子根本还没有行，没人开 App 的日子也没有。
  * 拿行数当分母会让满勤线随着月份推进一天天往上涨（月初显示"只要 8 天"），
  * 更糟的是月底真正结算时，孩子少开几天 App 反而让分母变小、满勤奖变得更容易拿。
  *
@@ -133,7 +133,7 @@ export type DayCell = {
   doneTasks: number;
   hasTasks: boolean;
   reachedGoal: boolean; // earned >= 每日达标线
-  planted: boolean; // 当天有"收藏动作"：花园主题=种了植物，图鉴主题=抓到了宝可梦（都免疫当晚的惩罚）
+  caught: boolean; // 当天抓到过宝可梦（抓到就不算没做事，不会被当晚惩罚）
   isFuture: boolean;
   dayType: DayType; // 按国家放假安排：工作日 / 普通周末 / 法定节假日
   holidayName: string | null; // 节假日名字，比如"国庆节"
@@ -174,7 +174,7 @@ export async function getMonthSummary(
   const monthEnd = dateStringToUtcDate(dates[dates.length - 1]);
   const today = todayDateString();
 
-  const [tasks, plants, caught, bonusEntry, templates] = await Promise.all([
+  const [tasks, caught, bonusEntry, templates] = await Promise.all([
     prisma.dailyTask.findMany({
       where: {
         childId,
@@ -182,10 +182,6 @@ export async function getMonthSummary(
         status: { not: TaskStatus.CANCELLED },
       },
       select: { date: true, status: true, points: true },
-    }),
-    prisma.plant.findMany({
-      where: { childId, plantedOnDate: { gte: monthStart, lte: monthEnd } },
-      select: { plantedOnDate: true },
     }),
     prisma.caught.findMany({
       where: { childId, caughtOnDate: { gte: monthStart, lte: monthEnd } },
@@ -204,12 +200,8 @@ export async function getMonthSummary(
     }),
   ]);
 
-  // 两个主题的"当天有动作"合并成一个集合：主题互斥，同一个孩子只会有其中一种记录。
-  const plantedDates = new Set(
-    [
-      ...plants.map((p) => (p.plantedOnDate ? formatStoredDate(p.plantedOnDate) : "")),
-      ...caught.map((c) => (c.caughtOnDate ? formatStoredDate(c.caughtOnDate) : "")),
-    ].filter(Boolean)
+  const caughtDates = new Set(
+    caught.map((c) => (c.caughtOnDate ? formatStoredDate(c.caughtOnDate) : "")).filter(Boolean)
   );
 
   const byDate = new Map<string, { total: number; done: number; earned: number }>();
@@ -234,7 +226,7 @@ export async function getMonthSummary(
       doneTasks: cell.done,
       hasTasks: cell.total > 0,
       reachedGoal: cell.earned >= child.dailyGoalPoints,
-      planted: plantedDates.has(date),
+      caught: caughtDates.has(date),
       isFuture: date > today,
       dayType,
       holidayName,
@@ -290,15 +282,14 @@ export type DayDetail = {
     points: number;
     status: TaskStatus;
   }[];
-  plants: { title: string; emoji: string | null }[];
 };
 
 /**
- * 某一天的明细：当天排了哪些任务、各自什么状态、一共拿了多少阳光、有没有种植物。
+ * 某一天的明细：当天排了哪些任务、各自什么状态、一共拿了多少阳光。
  * 孩子点日历格子进来看的就是这个，纯只读——补做任务要家长在后台补打卡。
  *
  * 不在这里补生成缺失的 DailyTask：这是个只读视图，写库应该发生在"今天"的入口
- * （getOrCreateTodayTasks）和花园结算里，那两处才拿得到正确的上下文。
+ * （getOrCreateTodayTasks）和纪律结算里，那两处才拿得到正确的上下文。
  */
 export async function getDayDetail(
   child: { id: string; dailyGoalPoints: number },
@@ -306,7 +297,7 @@ export async function getDayDetail(
 ): Promise<DayDetail> {
   const stored = dateStringToUtcDate(date);
 
-  const [tasks, plants] = await Promise.all([
+  const [tasks] = await Promise.all([
     prisma.dailyTask.findMany({
       where: { childId: child.id, date: stored, status: { not: TaskStatus.CANCELLED } },
       orderBy: { createdAt: "asc" },
@@ -320,10 +311,6 @@ export async function getDayDetail(
         points: true,
         status: true,
       },
-    }),
-    prisma.plant.findMany({
-      where: { childId: child.id, plantedOnDate: stored },
-      select: { title: true, emoji: true },
     }),
   ]);
 
@@ -342,7 +329,6 @@ export async function getDayDetail(
     holidayName,
     isMakeupWorkday,
     tasks,
-    plants,
   };
 }
 
@@ -351,7 +337,7 @@ export async function getDayDetail(
  * （当月还没过完不判）。某个月满勤 = 该月有任务的日子里，达标（当天拿到 ≥ dailyGoalPoints 阳光）
  * 的比例 ≥ MONTHLY_BONUS_RATIO。整个月一个任务都没排的月份直接跳过，不发奖也不算失败。
  *
- * 和花园结算一样是幂等的：游标在事务里推进，重复调用不会重复发奖。可以放心在多个页面调用。
+ * 和纪律结算一样是幂等的：游标在事务里推进，重复调用不会重复发奖。可以放心在多个页面调用。
  *
  * 参数收 child 对象：调用方已经查过孩子了，直接用它身上的游标先判断有没有要结算的月份。
  * 绝大多数时候（一个月里的其它 30 天）都没有，就能整个跳过下面这个事务——

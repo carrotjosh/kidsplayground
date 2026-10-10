@@ -140,10 +140,9 @@ export function MonthStatsPanel({ stats }: { stats: MonthStats }) {
             <p className="text-2xl font-bold text-nes-red">-{stats.spent}</p>
           </div>
           <Bar buckets={stats.spentBuckets} total={stats.spent} tone="spend" />
-          <p className="text-xs text-slate-400">只统计真正花出去的：兑换礼物、种植物。</p>
+          <p className="text-xs text-slate-400">只统计真正花出去的：兑换礼物、买精灵球。</p>
           <div className="flex flex-col gap-2 border-t border-slate-200 pt-2">
             <DetailList title="兑换了这些礼物" rows={stats.rewardDetail} />
-            <DetailList title="种了这些植物" rows={stats.plantDetail} />
           </div>
         </div>
       </div>

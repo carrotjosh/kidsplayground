@@ -9,7 +9,7 @@ const TYPE_LABELS: Record<string, string> = {
   REDEMPTION: "兑换礼物",
   MANUAL_ADJUST: "手动调整",
   TASK_REVOKE: "撤销打卡",
-  PLANT_SEED: "种植物",
+  PLANT_SEED: "种植物（已废弃）",
   MONTHLY_BONUS: "月度满勤奖",
 };
 

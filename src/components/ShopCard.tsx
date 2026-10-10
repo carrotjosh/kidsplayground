@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Pinyin } from "@/components/Pinyin";
 
 /**
- * 礼物商店 / 花园里"可以买的东西"卡片。两处长得一样，就共用一份，顺便把对齐问题一次解决：
+ * 礼物商店 / 图鉴里"可以买的东西"卡片。两处长得一样，就共用一份，顺便把对齐问题一次解决：
  *
  *   h-full          —— 网格默认 stretch，卡片高度跟着一排里最高的那张走，一排卡片等高；
  *   标题区 flex-1   —— 标题一行还是两行的差异全被这块吸收，
@@ -19,7 +19,7 @@ export function ShopCard({
   children,
 }: {
   emoji: string;
-  /** 传了就用它替代 emoji（花园里的植物用手绘插画）。图框高度两者一致，一排卡片还是齐的。 */
+  /** 传了就用它替代 emoji（需要手绘插画的时候用）。图框高度两者一致，一排卡片还是齐的。 */
   art?: ReactNode;
   title: string;
   cost: number;

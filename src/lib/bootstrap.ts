@@ -1,6 +1,5 @@
 import { BallTier } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { GARDEN_STAGES, gardenSetSize } from "@/lib/garden";
 
 /**
  * 新建孩子档案时预置的默认数据。
@@ -49,37 +48,6 @@ const DEFAULT_REWARDS = [
 ];
 
 /**
- * 植物目录。**顺序即解锁顺序**：前 gardenSide(1) = 4 种一开始就上架，
- * 后面的随花园升级逐个自动上架（见 lib/garden.ts 的 checkGardenStageUp，
- * 它按价格升序挑下一个未上架的品种，所以这里越靠后的必须越贵）。
- *
- * 为什么要预置用不上的品种：升级时要有货可解锁，没有就不升级（宁可停在当前级，
- * 也不能升到一个永远集不齐的花园）。多这两行数据没有代价，孩子看不到未上架的品种。
- */
-const DEFAULT_PLANT_TYPES = [
-  { title: "向日葵", emoji: "🌻", cost: 8 },
-  { title: "坚果墙", emoji: "🥜", cost: 12 },
-  { title: "豌豆射手", emoji: "🟢", cost: 18 },
-  { title: "樱桃炸弹", emoji: "🍒", cost: 30 },
-  // ↓ 第 2 级（5×5）解锁
-  { title: "寒冰射手", emoji: "❄️", cost: 40 },
-  // ↓ 第 3 级（6×6）解锁
-  { title: "大嘴花", emoji: "🌺", cost: 55 },
-  // ↓ 第 4 级（7×7）解锁
-  { title: "玉米投手", emoji: "🌽", cost: 75 },
-];
-
-/** 一开始就上架几种 = 第 1 级花园需要的种类数。 */
-const INITIAL_ACTIVE_PLANT_TYPES = gardenSetSize(1);
-
-if (DEFAULT_PLANT_TYPES.length < GARDEN_STAGES.length + INITIAL_ACTIVE_PLANT_TYPES - 1) {
-  // 模块加载时就炸，而不是等孩子升到某一级才发现没有新植物可解锁。
-  throw new Error(
-    `默认植物只有 ${DEFAULT_PLANT_TYPES.length} 种，不够支撑 ${GARDEN_STAGES.length} 级花园`
-  );
-}
-
-/**
  * 精灵球目录。catchPower 是抓取率倍率，价格按倍率拉开档次。
  * 大师球必中（代码里特判 tier === MASTER），所以定价要足够贵——
  * 它是"攒很久换一只想要的传说"的兜底，不是日常消耗品。
@@ -106,17 +74,16 @@ const DEFAULT_BALL_TYPES = [
 ];
 
 /**
- * 给一个刚建好的孩子铺上默认的任务模板、礼物和植物目录。
+ * 给一个刚建好的孩子铺上默认的任务模板、礼物和精灵球目录。
  *
- * 每一类都先数一下再写，所以对同一个孩子重复调用是安全的（比如老账号想补齐默认植物）。
+ * 每一类都先数一下再写，所以对同一个孩子重复调用是安全的（比如老账号想补齐默认目录）。
  * 不放在一个事务里：三次 createMany 互相独立，中途失败最多是少铺一类，
  * 家长在后台自己加回来即可，不值得为此多占一个事务连接。
  */
 export async function seedDefaultsForChild(childId: string) {
-  const [templateCount, rewardCount, plantTypeCount, ballTypeCount] = await Promise.all([
+  const [templateCount, rewardCount, ballTypeCount] = await Promise.all([
     prisma.taskTemplate.count({ where: { childId } }),
     prisma.reward.count({ where: { childId } }),
-    prisma.plantType.count({ where: { childId } }),
     prisma.ballType.count({ where: { childId } }),
   ]);
 
@@ -129,40 +96,10 @@ export async function seedDefaultsForChild(childId: string) {
     rewardCount === 0
       ? prisma.reward.createMany({ data: DEFAULT_REWARDS.map((r) => ({ ...r, childId })) })
       : null,
-    // 两个主题的目录都铺上：主题是随时能切的，切过去时不该看到一个空商店。
-    // 反正没启用的主题孩子根本看不到，多这几行数据没有代价。
-    plantTypeCount === 0
-      ? prisma.plantType.createMany({
-          data: DEFAULT_PLANT_TYPES.map((p, i) => ({
-            ...p,
-            childId,
-            // 只上架第 1 级需要的那几种，其余等升级时自动解锁
-            active: i < INITIAL_ACTIVE_PLANT_TYPES,
-          })),
-        })
-      : null,
     ballTypeCount === 0
       ? prisma.ballType.createMany({ data: DEFAULT_BALL_TYPES.map((b) => ({ ...b, childId })) })
       : null,
   ]);
-}
-
-/**
- * 给花园分级功能上线前建的老档案补上后面几级要用的植物品种（不上架）。
- * 不补的话他们收获三轮之后 checkGardenStageUp 找不到可解锁的品种，会永远停在第 1 级。
- */
-export async function ensurePlantTypes(childId: string) {
-  const existing = await prisma.plantType.findMany({
-    where: { childId },
-    select: { title: true },
-  });
-  const have = new Set(existing.map((t) => t.title));
-  const missing = DEFAULT_PLANT_TYPES.filter((p) => !have.has(p.title));
-  if (missing.length === 0 || existing.length === 0) return;
-
-  await prisma.plantType.createMany({
-    data: missing.map((p) => ({ ...p, childId, active: false })),
-  });
 }
 
 /** 给还没有精灵球目录的老孩子补上（主题功能上线前建的档案）。 */

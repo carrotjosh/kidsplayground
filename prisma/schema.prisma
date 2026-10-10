@@ -71,9 +71,10 @@ model Child {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  // 花园夜间结算的游标：已经判定过僵尸攻击的最后一天。为空表示从没结算过。
+  // 纪律结算的游标：已经判定过的最后一天。为空表示从没结算过。
   // 懒结算函数从这个日期的次日开始，逐天判定到"昨天"为止（"今天"永远不判，因为还没过完）。
-  gardenSettledThrough DateTime? @db.Date
+  // 列名保留历史的 gardenSettledThrough（改名不改数据，@map 指回原列）。
+  settledThrough DateTime? @db.Date @map("gardenSettledThrough")
 
   // 任务没做完的那天要不要真的有后果（图鉴跑掉一只 / 花园被吃一棵）。
   //
@@ -103,9 +104,8 @@ model Child {
   // 月度满勤奖结算游标：已经结算过奖励的最后一个月（存该月 1 号）。为空表示从没结算过。
   bonusSettledThrough DateTime? @db.Date
 
-  // 当前玩法主题。上面的 gardenSettledThrough 是两个主题共用的"纪律结算游标"
-  // （名字是历史遗留）——主题互斥，同一个孩子只会跑其中一套结算。
-  theme KidTheme @default(GARDEN)
+  // 玩法主题。现在只有宝可梦图鉴一个；保留这一列是为了以后要加第二个玩法时不用再迁移。
+  theme KidTheme @default(POKEDEX)
 
   // 抓宝可梦的保底计数器：每失败一次 +1，成功清零。连续失败到一定次数必中，
   // 免得一年级孩子攒了一周的阳光连着空手、直接放弃。
@@ -115,18 +115,10 @@ model Child {
   // 存历史最高水位而不是每次现算：撤销打卡会让累计值往回退，现算的话孩子可能眼看着掉级，
   // 那对一年级孩子是纯打击。
   //
-  // 等级解锁的是**内容**：图鉴开放到第几号（SPECIES_CEILING_BY_LEVEL）、
-  // 花园长到几级和有几种植物（GARDEN_STAGE_LEVELS）。
+  // 等级解锁的是**内容**：图鉴开放到第几号（SPECIES_CEILING_BY_LEVEL）。
   // 它**不控制商品的可见性**——礼物是家长和孩子谈好的约定，藏起来像是反悔；
   // 精灵球本来就用价格分了档（8/20/45/200），再叠一层等级是重复的闸。
   level Int @default(1)
-
-  // 花园已经长到第几级：1 是 4×4 … 4 是 7×7（见 lib/garden.ts 的 GARDEN_STAGES）。
-  //
-  // 该到第几级是由**打卡等级**算出来的（GARDEN_STAGE_LEVELS），那为什么还要存？
-  // 因为升级不能立刻生效：孩子可能正好集齐了一整套还没收获，园子当场从 4×4 变 5×5
-  // 会让辛苦种满的一园白干。所以等级够了先记着，等花园空出来再把这一列改掉。
-  gardenStage Int @default(1)
 
   // 现有这套价格（礼物/精灵球/植物）是按哪个"日薪"定的。
   // 家长一改任务模板，日薪就变了，而目录里的绝对价格不会自己跟上——
@@ -141,8 +133,6 @@ model Child {
   ledgerEntries PointsLedger[]
   rewards       Reward[]
   redemptions   Redemption[]
-  plantTypes    PlantType[]
-  plants        Plant[]
   encounters    DailyEncounter[]
   ballTypes     BallType[]
   caught        Caught[]
@@ -150,11 +140,9 @@ model Child {
   @@index([userId])
 }
 
-// 孩子端的玩法主题。一个孩子只跑一套：阳光全投在一个玩法里，经济才不会被摊薄，
-// 「任务没完成」的惩罚也只作用于一边。换主题时旧数据都保留，切回去还在。
+// 孩子端的玩法主题。目前只有宝可梦图鉴（花园已删除，见 prisma/migrations 里的 drop_garden）。
 enum KidTheme {
-  GARDEN // 植物大战僵尸：种植物、僵尸吃植物、集齐一套收获
-  POKEDEX // 宝可梦：买精灵球抓宝可梦、没完成任务就有宝可梦离家出走
+  POKEDEX // 宝可梦：买精灵球抓宝可梦、当天挣得不到 5 阳光就有宝可梦离家出走
 }
 
 enum TaskSource {
@@ -188,7 +176,7 @@ enum LedgerType {
   TASK_REVOKE
   PLANT_SEED // 种植物消耗的阳光；僵尸吃掉植物不产生流水，因为阳光在"种下"时已经扣过
   MONTHLY_BONUS // 月度满勤奖励
-  GARDEN_BONUS // 花园集齐一整套后，一次性收获的阳光奖励
+  GARDEN_BONUS // 【已废弃】花园集齐一整套后的收获奖励（花园已删除，保留枚举值只为历史兼容）
   BALL_BUY // 买精灵球消耗的阳光；抓不到也不退，宝可梦离家出走同样不产生流水
   POKEDEX_BONUS // 图鉴收集到里程碑的奖励
   POKEDEX_DUPLICATE // 抓到已经有的宝可梦，按稀有度返还一点阳光
@@ -198,15 +186,6 @@ enum LedgerType {
 enum RedemptionStatus {
   REQUESTED
   FULFILLED
-}
-
-// ALIVE：植物还活着 / EATEN：已被僵尸吃掉 / HARVESTED：花园集齐一整套后被一次性收走换成阳光。
-// 不用 DB 唯一约束限制"同一格子同时只能有一条记录"，而是查询时用 status = ALIVE
-// 过滤出"当前占用中的格子"，这样格子被吃空/被收获后可以重新种，同时保留完整历史（同 DailyTask/Redemption 的做法）。
-enum PlantStatus {
-  ALIVE
-  EATEN
-  HARVESTED
 }
 
 // 周期性任务模板，家长维护。
@@ -269,7 +248,6 @@ model DailyTask {
 
 // 积分（阳光）流水：唯一的真相来源，当前余额 = 该表 amount 求和。
 // dailyTaskId 故意不设 @unique：同一条 DailyTask 完成->撤销->再次完成，会产生多条流水。
-// plantId 设 @unique：一条 Plant 记录只会在"种下"那一刻产生一条消耗流水，不会重复消费。
 model PointsLedger {
   id           String      @id @default(cuid())
   childId      String
@@ -281,8 +259,6 @@ model PointsLedger {
   dailyTask    DailyTask?  @relation(fields: [dailyTaskId], references: [id])
   redemptionId String?     @unique
   redemption   Redemption? @relation(fields: [redemptionId], references: [id])
-  plantId      String?     @unique
-  plant        Plant?      @relation(fields: [plantId], references: [id])
   createdAt    DateTime    @default(now())
 
   @@index([dailyTaskId])
@@ -326,58 +302,6 @@ model Redemption {
   ledgerEntry PointsLedger?
 
   @@index([childId, createdAt])
-}
-
-// 植物目录，家长维护，字段结构参照 Reward。
-model PlantType {
-  id        String   @id @default(cuid())
-  childId   String
-  child     Child    @relation(fields: [childId], references: [id])
-  title     String
-  emoji     String?
-  cost      Int
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-
-  plants Plant[]
-
-  @@index([childId])
-}
-
-// 种下的植物实例。title/emoji 做了快照（同 DailyTask 的做法），避免以后修改植物目录
-// 影响历史展示。slot 是花园格子编号（0..GARDEN_SIZE-1，常量定义在 lib/garden.ts）。
-//
-// 不加 @@unique([childId, slot])：一株植物被僵尸吃掉后 status 变 EATEN，格子要能重新种上
-// 新的一株，同时保留完整历史——同一个 slot 编号上历史上会有多条 Plant 记录（若干条 EATEN +
-// 最多一条当前 ALIVE）。"这个格子现在是不是空的"永远在查询时用 where: { status: ALIVE }
-// 过滤得到"当前占用的格子集合"来判断，而不是靠数据库约束。
-model Plant {
-  id          String      @id @default(cuid())
-  childId     String
-  child       Child       @relation(fields: [childId], references: [id])
-  // 可空 + SetNull：家长删除植物品种时，历史植物记录要保留（title/emoji 都有快照），
-  // 只是断开和目录的关联。同 Redemption.rewardId 的做法。
-  plantTypeId String?
-  plantType   PlantType?  @relation(fields: [plantTypeId], references: [id], onDelete: SetNull)
-  title       String
-  emoji       String?
-  slot        Int
-  status      PlantStatus @default(ALIVE)
-  plantedAt   DateTime    @default(now())
-  // 按中国时区算出来的"种下那一天"。单独存一列而不是从 plantedAt 现算，有两个用处：
-  // 夜间结算要按天判断哪些植物是"当天刚种下"的（它们挡在最前面、先被僵尸吃），
-  // 收获时又要按它算每棵养了多少天来计息。直接比日期列最省事也最不容易错。
-  plantedOnDate DateTime? @db.Date
-  eatenAt     DateTime?
-  eatenOnDate DateTime?   @db.Date // 被吃掉对应的"结算日"，用于历史审计展示
-  harvestedAt DateTime? // 花园集齐一整套后被一次性收走的时间；同一轮收获的植物共享同一个时间戳
-  createdAt   DateTime    @default(now())
-
-  ledgerEntry PointsLedger?
-
-  @@index([childId, status])
-  @@index([childId, slot])
-  @@index([childId, plantedOnDate])
 }
 
 // ---------- 宝可梦图鉴主题 ----------
@@ -429,7 +353,7 @@ enum BallTier {
   MASTER
 }
 
-// 精灵球目录，每个孩子一份，家长可以改价/上下架。结构照抄 PlantType。
+// 精灵球目录，每个孩子一份，家长可以改价/上下架。结构照抄 Reward。
 model BallType {
   id         String   @id @default(cuid())
   childId    String
@@ -510,7 +434,7 @@ model DailyEncounter {
   @@index([childId, date])
 }
 
-// 抓到的宝可梦实例。所有展示用字段都是快照（同 Plant / DailyTask 的做法）：
+// 抓到的宝可梦实例。所有展示用字段都是快照（同 DailyTask / Redemption 的做法）：
 // 图鉴库更新、家长改精灵球目录，都不该改变已经抓到的这只长什么样。
 model Caught {
   id        String @id @default(cuid())

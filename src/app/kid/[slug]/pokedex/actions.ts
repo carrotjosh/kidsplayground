@@ -7,7 +7,7 @@ import { refreshEncounters, throwBall, type ThrowResult } from "@/lib/pokedex";
 import { todayDateString } from "@/lib/date";
 
 /**
- * 扔球。和花园里"种植物"不同，这一步是有输赢的，所以要把结果带回页面渲染，
+ * 扔球。这一步是有输赢的，所以要把结果带回页面渲染，
  * 不能只靠 revalidate 让页面自己刷——孩子得知道刚才那一下抓到没抓到、遇到的是谁。
  *
  * 结果通过 useActionState 回传，所以返回值必须是可序列化的普通对象。

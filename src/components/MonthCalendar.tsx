@@ -210,8 +210,8 @@ export function MonthCalendar({
                     {day.earned}☀️
                   </span>
                 )}
-                {day.planted && (
-                  <span className={`leading-none ${big ? "text-sm" : "text-[9px]"}`}>🌱</span>
+                {day.caught && (
+                  <span className={`leading-none ${big ? "text-sm" : "text-[9px]"}`}>📕</span>
                 )}
               </>
             );
@@ -265,7 +265,7 @@ export function MonthCalendar({
         <span>
           <b className="text-nes-red">休</b> = 休息 · <b>学</b> = 调休上学
         </span>
-        <span>🌱 种了植物</span>
+        <span>📕 抓到了宝可梦</span>
       </div>
     </div>
   );

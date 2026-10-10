@@ -15,23 +15,16 @@ import { setPenaltyEnabledAction } from "./actions";
 export function PenaltyToggle({
   enabled,
   childName,
-  theme,
 }: {
   enabled: boolean;
   childName: string;
-  theme: "POKEDEX" | "GARDEN";
 }) {
-  const what = theme === "GARDEN" ? "被僵尸吃掉一棵植物" : "跑掉一只已经抓到的宝可梦";
-  const immune =
-    theme === "GARDEN"
-      ? "当天新种下的那棵会先被吃，算是挡了一下。"
-      : "当天只要抓到过宝可梦就免疫。";
 
   return (
     <div className="pixel-card flex flex-col gap-3 bg-white p-4">
       <h2 className="font-semibold">{childName}：任务没做完的后果</h2>
       <p className="text-sm text-slate-500">
-        某天任务没有全部完成，就会{what}。{immune}
+        当天挣到的阳光不到 5，就会跑掉一只已经抓到的宝可梦；孩子已经点了「做完了」但你还没批的那天，先不算。
         不开 App 也躲不掉——下次打开会把欠下的日子一次算完。
       </p>
 

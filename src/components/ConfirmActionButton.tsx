@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 
-/** 按钮配色。种植物用绿、兑换礼物用粉、收获花园用金。 */
+/** 按钮配色。兑换礼物用粉、扔球用绿。 */
 const TONE_CLASS = {
   green: "bg-nes-green text-white",
   pink: "bg-nes-pink text-white",
@@ -11,8 +11,8 @@ const TONE_CLASS = {
 
 /**
  * 需要二次确认的提交按钮。孩子端每个花阳光/不可逆的动作都套一层 window.confirm，
- * 免得手一滑就把阳光花掉了。种植物、兑换礼物、收获花园共用这一个组件——
- * 之前礼物页和花园页各写了一份，尺寸和圆角都对不上，卡片一排下来高低不齐。
+ * 免得手一滑就把阳光花掉了。兑换礼物等花阳光的动作共用这一个组件——
+ * 之前礼物页和别处各写了一份，尺寸和圆角都对不上，卡片一排下来高低不齐。
  */
 export function ConfirmActionButton({
   action,

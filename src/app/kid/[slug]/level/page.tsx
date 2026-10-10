@@ -3,9 +3,7 @@ import { notFound } from "next/navigation";
 import { KidNavBar } from "@/components/KidNavBar";
 import { Pinyin } from "@/components/Pinyin";
 import { PointsBadge } from "@/components/PointsBadge";
-import { KidTheme } from "@/generated/prisma/client";
 import { getChildBySlug } from "@/lib/child";
-import { getGardenRoadmap, getHarvestedRounds } from "@/lib/garden";
 import { checkLevelUp, getLevelRoadmap, levelProgress, totalEarned } from "@/lib/level";
 import { getPointsBalance } from "@/lib/points";
 import { collectionNavItem } from "@/lib/theme";
@@ -28,14 +26,9 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
   const levelUp = await checkLevelUp(child.id);
   const level = levelUp?.level ?? child.level;
 
-  const [earned, balance, gardenPath, rounds] = await Promise.all([
+  const [earned, balance] = await Promise.all([
     totalEarned(child.id),
     getPointsBalance(child.id),
-    // 花园主题的植物走的是另一条线（按收获轮数），孩子同样要看得见它的尽头
-    child.theme === KidTheme.GARDEN
-      ? getGardenRoadmap(child.id, child.gardenStage)
-      : Promise.resolve([]),
-    child.theme === KidTheme.GARDEN ? getHarvestedRounds(child.id) : Promise.resolve(0),
   ]);
   const roadmap = getLevelRoadmap(level);
   const progress = levelProgress(level, earned);
@@ -122,62 +115,6 @@ export default async function LevelPage({ params }: { params: Promise<{ slug: st
             )}
           </div>
         ))}
-
-      {/* 花园之路。和等级是两条独立的线：等级看累计打卡挣的阳光，花园看收获了几轮。
-          不合并是因为叠两套门槛之后"我到底什么时候能拿到寒冰射手"就说不清了。 */}
-      {gardenPath.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="pixel-text-outline kid-text kid-body text-white">
-            <Pinyin text="花园之路" /> 🌻
-          </h2>
-          <p className="kid-text kid-label text-white">
-            <Pinyin
-              text={`花园会跟着等级长大，但要等你把当前这一园收获掉才会变。已经收获过 ${rounds} 次`}
-            />
-          </p>
-          {gardenPath.map((entry) => (
-            <div
-              key={entry.stage}
-              className={`pixel-card flex flex-wrap items-center gap-3 p-3 lg:p-4 ${
-                entry.current ? "bg-nes-yellow" : entry.reached ? "bg-white" : "bg-white/70"
-              }`}
-            >
-              <span
-                className={`pixel-font flex h-10 w-16 shrink-0 items-center justify-center border-2 border-nes-black text-sm lg:h-12 lg:w-20 ${
-                  entry.reached ? "bg-nes-green text-white" : "bg-slate-200 text-slate-500"
-                }`}
-              >
-                {entry.side}×{entry.side}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className={`kid-text block kid-body ${
-                    entry.reached ? "text-slate-800" : "text-slate-500"
-                  }`}
-                >
-                  <Pinyin text={`${entry.size} 个格子`} />
-                </span>
-                <span className="kid-text block kid-label text-slate-400">
-                  {entry.needLevel <= 1 ? (
-                    <Pinyin text="一开始就有" />
-                  ) : (
-                    <Pinyin text={`打卡到 ${entry.needLevel} 级`} />
-                  )}
-                </span>
-              </span>
-              <span className="kid-text shrink-0 kid-label text-slate-600">
-                {entry.unlocks.length > 0 && (
-                  <Pinyin
-                    text={`${entry.reached ? "已解锁" : "解锁"} ${entry.unlocks
-                      .map((u) => `${u.emoji ?? ""}${u.title}`)
-                      .join("、")}`}
-                  />
-                )}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
       </div>
 
       <KidNavBar

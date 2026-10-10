@@ -132,13 +132,6 @@ export default async function KidDayPage({
           </div>
         )}
 
-        {detail.plants.length > 0 && (
-          <p className="pixel-card kid-text bg-white p-3 kid-body text-slate-700">
-            🌱 <Pinyin text="这天种下了" />{" "}
-            {detail.plants.map((p) => `${p.emoji ?? ""}${p.title}`).join("、")}
-          </p>
-        )}
-
         {!detail.isToday && detail.tasks.some((t) => t.status !== TaskStatus.DONE) && (
           <p className="kid-text kid-label text-white pixel-text-outline">
             <Pinyin text="过去的任务不能再补做啦，要补分请找爸爸妈妈" />

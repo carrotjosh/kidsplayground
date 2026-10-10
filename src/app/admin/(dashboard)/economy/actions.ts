@@ -53,10 +53,9 @@ export async function recalibrateAction(formData: FormData) {
 
   const scale = (n: number) => Math.max(1, Math.round(n * factor));
 
-  const [rewards, balls, plants] = await Promise.all([
+  const [rewards, balls] = await Promise.all([
     prisma.reward.findMany({ where: { childId: child.id, cost: { gt: 0 } } }),
     prisma.ballType.findMany({ where: { childId: child.id } }),
-    prisma.plantType.findMany({ where: { childId: child.id } }),
   ]);
 
   // 一个事务里改完：中途失败会让一半价格是新的、一半是旧的，那种状态没人看得懂。
@@ -66,9 +65,6 @@ export async function recalibrateAction(formData: FormData) {
     ),
     ...balls.map((b) =>
       prisma.ballType.update({ where: { id: b.id }, data: { cost: scale(b.cost) } })
-    ),
-    ...plants.map((p) =>
-      prisma.plantType.update({ where: { id: p.id }, data: { cost: scale(p.cost) } })
     ),
     prisma.child.update({
       where: { id: child.id },
@@ -82,7 +78,6 @@ export async function recalibrateAction(formData: FormData) {
   revalidatePath("/admin/economy");
   revalidatePath("/admin/rewards");
   revalidatePath("/admin/balls");
-  revalidatePath("/admin/plants");
   revalidatePath("/admin/children");
   // 孩子端的商店价格也要跟着变
   revalidatePath(`/kid/${child.slug}`, "layout");
@@ -115,7 +110,7 @@ export async function acceptCurrentPricesAction() {
  * 只认这四个已知值，并且每一条都带上 childId 条件挡住越权。
  */
 export async function setItemPriceAction(
-  kind: "reward" | "ball" | "plant" | "dailyGoal",
+  kind: "reward" | "ball" | "dailyGoal",
   id: string,
   formData: FormData
 ) {
@@ -137,10 +132,6 @@ export async function setItemPriceAction(
       if (value < 1) throw new ActionError("精灵球的价格至少是 1");
       await prisma.ballType.updateMany({ where: { id, childId: child.id }, data: { cost: value } });
       break;
-    case "plant":
-      if (value < 1) throw new ActionError("植物的价格至少是 1");
-      await prisma.plantType.updateMany({ where: { id, childId: child.id }, data: { cost: value } });
-      break;
     case "dailyGoal":
       if (value < 1) throw new ActionError("每日达标线至少是 1");
       // id 这里传的是 childId，但仍然用当前会话的 child.id 去写，不采信它
@@ -153,7 +144,6 @@ export async function setItemPriceAction(
   revalidatePath("/admin/economy");
   revalidatePath("/admin/rewards");
   revalidatePath("/admin/balls");
-  revalidatePath("/admin/plants");
   revalidatePath("/admin/children");
   revalidatePath(`/kid/${child.slug}`, "layout");
 }

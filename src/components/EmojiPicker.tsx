@@ -68,18 +68,6 @@ export const REWARD_EMOJI_GROUPS: EmojiGroup[] = [
   },
 ];
 
-/** 植物用的预设 emoji。 */
-export const PLANT_EMOJI_GROUPS: EmojiGroup[] = [
-  {
-    label: "植物",
-    emojis: ["🌻", "🌱", "🌵", "🌿", "🍀", "🌳", "🌲", "🌴", "🪴", "🌷", "🌸", "🌺", "🌹", "🍄", "🎋", "🌾"],
-  },
-  {
-    label: "果实/道具",
-    emojis: ["🥜", "🍒", "🌰", "🫐", "🍋", "🌽", "🎃", "🍉", "🥕", "🧊", "🔥", "⚡", "🛡️", "💣", "🟢", "☀️"],
-  },
-];
-
 /**
  * emoji 选择器：点一下就填进隐藏的表单字段，也支持自己输入。
  * 用隐藏 input 承载表单值，避免受控 input 和 Server Action 的表单提交打架。
