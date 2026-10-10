@@ -5,7 +5,7 @@ import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
 
 /**
- * 开发用种子数据：一个家长账号 + 一个孩子 + 默认的任务模板/礼物/植物。
+ * 开发用种子数据：一个家长账号 + 一个孩子 + 默认的任务模板/礼物/精灵球。
  *
  * Child.userId 是必填的（多租户下"无主的孩子"会绕过所有归属校验），
  * 所以这里先保证有个账号，再把孩子挂上去。

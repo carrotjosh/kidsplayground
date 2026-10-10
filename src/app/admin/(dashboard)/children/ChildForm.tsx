@@ -10,7 +10,7 @@ import { createChildAction } from "./actions";
  * 新增孩子。名字和玩法主题一起填。
  *
  * 主题原来要等档案建完、在下面的「玩法主题」卡片里才能改，新家长根本发现不了——
- * 默认落在花园主题，等孩子说"我想抓宝可梦"才回来找。建档时就问，一步到位。
+ * 现在只有宝可梦一个玩法，建档时不再让家长选主题。
  */
 export function ChildForm({ isFirst }: { isFirst: boolean }) {
   const [error, formAction, isPending] = useActionState(createChildAction, null);

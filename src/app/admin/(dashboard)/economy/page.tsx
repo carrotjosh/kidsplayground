@@ -154,7 +154,7 @@ export default async function EconomyAdminPage() {
                       {item.band ? `${item.band.min}–${item.band.max} 天` : "—"}
                     </td>
                     {/* 价格那一列直接做成可编辑的：家长是在这一页发现问题的，
-                        让他翻到礼物页/精灵球页/植物页各改一遍太绕 */}
+                        让他翻到礼物页/精灵球页各改一遍太绕 */}
                     <td className="py-1.5 pl-2">
                       <PriceCell
                         kind={item.kind}

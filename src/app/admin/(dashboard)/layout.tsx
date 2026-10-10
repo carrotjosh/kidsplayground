@@ -43,8 +43,8 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
     ? (await prisma.user.findUnique({ where: { id: session.impersonatingUserId } }))?.email
     : null;
 
-  // 收藏玩法那一项按当前孩子的主题显示，不然会同时看到"植物目录"和"精灵球"两个入口，
-  // 而其中一个对这个孩子根本不生效。
+  // 收藏玩法那一项按当前孩子的主题显示（现在只有图鉴一个，但保留这个入口的查表方式，
+  // 以后加第二个玩法时不用再改这里）。
   const themeMeta = activeChild ? THEME_META[activeChild.theme] : null;
   const withTheme = themeMeta
     ? [

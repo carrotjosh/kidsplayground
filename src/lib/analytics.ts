@@ -17,7 +17,7 @@ export type MonthStats = {
   doneTasks: number;
   /** 本月**净**获得的阳光 = 毛收入 - 冲销 */
   earned: number;
-  /** 毛收入：完成任务 + 满勤奖 + 花园收获 + 家长加分 */
+  /** 毛收入：完成任务 + 满勤奖 + 图鉴奖励 + 家长加分 */
   earnedGross: number;
   /** 各来源赚了多少（毛收入的构成） */
   earnedBuckets: SpendBucket[];
@@ -25,13 +25,12 @@ export type MonthStats = {
   reversed: number;
   /** 冲销的构成 */
   reversedBuckets: SpendBucket[];
-  /** 本月真正花掉的阳光（正数），只含兑换礼物和种植物 */
+  /** 本月真正花掉的阳光（正数），只含兑换礼物和买球 */
   spent: number;
   /** 花在哪了 */
   spentBuckets: SpendBucket[];
-  /** 具体兑换了哪些礼物 / 种了哪些植物 */
+  /** 具体兑换了哪些礼物 */
   rewardDetail: SpendBucket[];
-  plantDetail: SpendBucket[];
 };
 
 /**
@@ -50,12 +49,10 @@ function classify(type: LedgerType, amount: number): LedgerBucket {
   switch (type) {
     case "TASK_COMPLETE":
     case "MONTHLY_BONUS":
-    case "GARDEN_BONUS":
     case "POKEDEX_BONUS":
     case "POKEDEX_DUPLICATE":
       return "EARN";
     case "REDEMPTION":
-    case "PLANT_SEED":
     case "BALL_BUY": // 球扔出去就消耗掉了，抓没抓到都是花出去的
     case "POKEDEX_REFRESH":
       return "SPEND";
@@ -73,7 +70,6 @@ const EARN_LABELS: Partial<Record<LedgerType, string>> = {
   TASK_COMPLETE: "完成任务",
   MONTHLY_BONUS: "月度满勤奖",
   MANUAL_ADJUST: "家长手动加分",
-  GARDEN_BONUS: "花园集齐奖励",
   POKEDEX_BONUS: "图鉴收集奖励",
   POKEDEX_DUPLICATE: "重复宝可梦返还",
 };
@@ -85,7 +81,6 @@ const REVERSAL_LABELS: Partial<Record<LedgerType, string>> = {
 
 const SPEND_LABELS: Partial<Record<LedgerType, string>> = {
   REDEMPTION: "兑换礼物",
-  PLANT_SEED: "种植物",
   BALL_BUY: "买精灵球",
   POKEDEX_REFRESH: "刷新遇怪",
 };
@@ -116,7 +111,7 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
   // 流水按创建时间归集，用 [月初, 下月初) 的半开区间，避免月末最后一天被漏掉。
   const nextMonthStart = dateStringToUtcDate(`${addMonths(month, 1)}-01`);
 
-  const [tasks, ledger, redemptions, plants] = await Promise.all([
+  const [tasks, ledger, redemptions] = await Promise.all([
     prisma.dailyTask.findMany({
       where: {
         childId,
@@ -132,12 +127,6 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
     prisma.redemption.findMany({
       where: { childId, createdAt: { gte: monthStart, lt: nextMonthStart } },
       select: { rewardTitle: true, cost: true },
-    }),
-    prisma.plant.findMany({
-      where: { childId, plantedOnDate: { gte: monthStart, lte: monthEnd } },
-      // 花的阳光取当时那条 PLANT_SEED 流水，而不是植物目录上的现价——
-      // 目录可以被家长改价甚至删掉，流水才是"当时真的花了多少"。
-      select: { title: true, ledgerEntry: { select: { amount: true } } },
     }),
   ]);
 
@@ -192,9 +181,6 @@ export async function getMonthStats(childId: string, month: string): Promise<Mon
     spent: spendEntries.reduce((s, e) => s + Math.abs(e.amount), 0),
     spentBuckets: toBuckets(spendEntries, SPEND_LABELS),
     rewardDetail: groupDetail(redemptions.map((r) => ({ label: r.rewardTitle, cost: r.cost }))),
-    plantDetail: groupDetail(
-      plants.map((p) => ({ label: p.title, cost: Math.abs(p.ledgerEntry?.amount ?? 0) }))
-    ),
   };
 }
 

@@ -48,7 +48,7 @@ export default async function RewardsPage({
         <PointsBadge balance={balance} />
       </header>
 
-      {/* 和花园页的植物卡片用同一套断点，两页的卡片节奏一致 */}
+      {/* 和图鉴页的卡片用同一套断点，两页的卡片节奏一致 */}
       {/* min-h-0 是必须的：不写的话 flex 子项不会缩到内容高度以下，overflow 就永远不生效 */}
       <section className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 lg:grid-cols-4">
         {rewards.length === 0 ? (

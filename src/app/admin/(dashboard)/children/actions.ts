@@ -27,10 +27,9 @@ export async function createChildAction(
 ): Promise<string | null> {
   await requireParentSession();
 
-  // 表单来的值不可信，只认枚举里真实存在的那两个；认不出来就退回默认主题，
-  // 不要因为有人改了 radio 的 value 就让建档失败。
+  // 表单来的值不可信，认不出来就退回默认主题，不要因为有人改了 value 就让建档失败。
   const raw = String(formData.get("theme") ?? "");
-  const theme = raw in KidTheme ? (raw as KidTheme) : KidTheme.GARDEN;
+  const theme = raw in KidTheme ? (raw as KidTheme) : KidTheme.POKEDEX;
 
   try {
     await createChildForCurrentUser(String(formData.get("name") ?? ""), theme);
@@ -73,21 +72,10 @@ export async function deleteChildAction(childId: string) {
   revalidateEverything();
 }
 
-export async function setThemeAction(theme: KidTheme) {
-  const session = await requireParentSession();
-  const child = await getActiveChild();
-  // 带 childId + userId 双条件，挡住越权改别人家孩子的主题
-  await prisma.child.updateMany({
-    where: { id: child.id, userId: effectiveUserId(session) },
-    data: { theme },
-  });
-  revalidateEverything();
-}
-
 /**
- * 开关"任务没做完的后果"（图鉴宝可梦离家出走 / 花园植物被吃）。
+ * 开关"任务没做完的后果"（宝可梦离家出走）。
  *
- * 关掉不会冻结结算——settlePokedexForChild / settleGardenForChild 照常
+ * 关掉不会冻结结算——settlePokedexForChild 照常
  * 逐天走完并推进游标，只是跳过惩罚。所以关一个月再打开，不会一次性补罚，
  * 那段日子就是真的不算了。
  */

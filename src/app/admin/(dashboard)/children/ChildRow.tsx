@@ -120,7 +120,7 @@ export function ChildRow({
             onClick={() => {
               if (
                 window.confirm(
-                  `确定删除「${child.name}」吗？建议先点"导出数据"备份。\n\n会同时删掉 TA 的全部打卡记录、阳光流水、花园和兑换历史，无法恢复。`
+                  `确定删除「${child.name}」吗？建议先点"导出数据"备份。\n\n会同时删掉 TA 的全部打卡记录、阳光流水、图鉴和兑换历史，无法恢复。`
                 )
               ) {
                 deleteFormRef.current?.requestSubmit();

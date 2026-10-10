@@ -14,7 +14,6 @@ import {
   speciesMasteryBonus,
   type PriceBandKey,
 } from "@/lib/economy";
-import { gardenSetSize, gardenSize } from "@/lib/garden";
 import {
   catchProbability,
   expectedCatchRate,
@@ -25,7 +24,7 @@ import {
  * 经济体检：把家长可改的那些价格换算成「几天工资」，和设计区间对一下，并校验几条硬不变量。
  *
  * 单独一个文件（而不是塞进 lib/economy.ts）是因为依赖方向：
- * 这里要读 pokedex 和 garden 的内部常量，而它俩都要 import economy.ts。
+ * 这里要读 pokedex 的内部常量，而它要 import economy.ts。
  * 合在一起就成环了。economy.ts 只往下依赖 db/date/tasks，谁都能安全 import。
  */
 
@@ -38,7 +37,7 @@ export type AuditFinding = {
 };
 
 /** 这一项是哪张表里的哪一行，逐行改价时要用。dailyGoal 不是目录项，是 Child 上的一个字段。 */
-export type PricedItemKind = "reward" | "ball" | "plant" | "dailyGoal";
+export type PricedItemKind = "reward" | "ball" | "dailyGoal";
 
 export type PricedItem = {
   kind: PricedItemKind;
@@ -131,7 +130,7 @@ const BALL_BAND: Record<BallTier, PriceBandKey> = {
 };
 
 export async function auditEconomy(childId: string): Promise<EconomyAudit> {
-  const [child, rewards, balls, plants, rate, maxPoints, observed] = await Promise.all([
+  const [child, rewards, balls, rate, maxPoints, observed] = await Promise.all([
     prisma.child.findUniqueOrThrow({
       where: { id: childId },
       select: {
@@ -140,12 +139,10 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
         pokedexMilestoneStep: true,
         priceBaselineRate: true,
         theme: true,
-        gardenStage: true,
       },
     }),
     prisma.reward.findMany({ where: { childId, active: true }, orderBy: { cost: "asc" } }),
     prisma.ballType.findMany({ where: { childId, active: true } }),
-    prisma.plantType.findMany({ where: { childId, active: true }, orderBy: { cost: "asc" } }),
     // 基准 = 达标线（家长的期待）。理论上限和实测收入只用来做对照和说实话，
     // 不参与定价——理由见 lib/economy.ts 的 economyRate。
     economyRate(childId),
@@ -273,18 +270,6 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
     }
   }
 
-  // ---- 不变量 2：花园必须能集齐 ----
-  // 需要几种植物随花园级数变（4×4 要 4 种、5×5 要 5 种……），所以按孩子当前的级数算。
-  const setSize = gardenSetSize(child.gardenStage);
-  const size = gardenSize(child.gardenStage);
-  if (child.theme === "GARDEN" && plants.length * setSize !== size) {
-    findings.push({
-      level: "error",
-      title: `上架了 ${plants.length} 种植物，花园永远集不齐`,
-      detail: `现在是第 ${child.gardenStage} 级花园（${size} 格、每种要种满 ${setSize} 棵），所以上架的必须正好 ${size / setSize} 种。现在孩子怎么种都拿不到收获奖励。`,
-    });
-  }
-
   // ---- 不变量 3：达标线必须真的够得着 ----
   //
   // 基准现在**就是**达标线，所以原来那条"达标线不能高过日薪"成了恒真。
@@ -363,10 +348,6 @@ export async function auditEconomy(childId: string): Promise<EconomyAudit> {
         .map((b) => priced("ball", b.id, b.title, b.cost, rate, BALL_BAND[b.tier])),
     },
     {
-      title: "植物",
-      items: plants.map((p) => priced("plant", p.id, p.title, p.cost, rate, "plant")),
-    },
-    {
       title: "其他",
       // 和**任务总分**比，不是和基准比——基准就是达标线本身，比出来恒等于 1
       items: [
@@ -405,10 +386,9 @@ export async function recalibrationPreview(childId: string): Promise<{
   const { rate, baseline } = await auditEconomy(childId);
   const factor = baseline > 0 && rate > 0 ? rate / baseline : 1;
 
-  const [rewards, balls, plants] = await Promise.all([
+  const [rewards, balls] = await Promise.all([
     prisma.reward.findMany({ where: { childId }, orderBy: { cost: "asc" } }),
     prisma.ballType.findMany({ where: { childId } }),
-    prisma.plantType.findMany({ where: { childId }, orderBy: { cost: "asc" } }),
   ]);
 
   // 零成本礼物（"今晚吃什么我决定"那类）本来就该保持零成本，乘以任何倍数都还是 0，
@@ -422,7 +402,6 @@ export async function recalibrationPreview(childId: string): Promise<{
     ...[...balls]
       .sort((a, b) => a.cost - b.cost)
       .map((b) => ({ kind: "ball", label: b.title, from: b.cost, to: scale(b.cost) })),
-    ...plants.map((p) => ({ kind: "plant", label: p.title, from: p.cost, to: scale(p.cost) })),
     // **达标线不参与校准**。基准现在就是达标线（见 lib/economy.ts 的 economyRate），
     // 缩放它等于自己改自己：改完基准又变了，漂移永远归不了零，点一次校准就能
     // 把达标线一路推上去。它只能由家长在「孩子档案」里显式调整。

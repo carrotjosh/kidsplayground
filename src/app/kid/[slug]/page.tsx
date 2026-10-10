@@ -69,7 +69,7 @@ export default async function KidHomePage({
 
   return (
     // 一屏容器在 layout.tsx，这里只管内容。上中下三块：
-    // 今天要做的事 → 打卡日历（占剩余全部高度）→ 花园/礼物商店。
+    // 今天要做的事 → 打卡日历（占剩余全部高度）→ 图鉴/礼物商店。
     <>
       {/* flex-wrap 是保命的：容器是 overflow-hidden，这一行一旦超宽不会出滚动条，
           而是**直接把右边裁掉**——阳光总数就那么没了，而且在桌面上完全看不出来 */}
@@ -171,7 +171,7 @@ export default async function KidHomePage({
         </section>
       </div>
 
-      {/* 三、我的花园 + 礼物商店 */}
+      {/* 三、我的图鉴 + 礼物商店 */}
       <KidNavBar
         compact
         items={[

@@ -40,7 +40,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
   const { slug } = await params;
   const child = await getChildBySlug(slug);
   if (!child) notFound();
-  // 主题互斥：花园主题的孩子不该看到图鉴，直接送回首页
+  // 只有宝可梦一个玩法了，但老链接/别的主题残留时还是送回首页
   if (child.theme !== KidTheme.POKEDEX) redirect(`/kid/${slug}`);
 
   // 懒结算：把欠下的"离家出走"判定补齐，返回这次新发生的事件做一次性提示
@@ -112,7 +112,7 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
 
       {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
-      {/* 当天挣到的阳光不到 FLEE_EARN_THRESHOLD，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
+      {/* 当天挣到的阳光不到 FLEE_EARN_THRESHOLD，宝可梦离家出走了 */}
       {events.length > 0 && (
         <section className="flex flex-col gap-2">
           {events.map((event, i) => (

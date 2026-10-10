@@ -27,10 +27,10 @@ import { ensureDailyTasksForDate } from "@/lib/tasks";
 import { FLEE_EARN_THRESHOLD } from "@/lib/flee";
 
 /**
- * 宝可梦图鉴主题的核心逻辑。整体照着 lib/garden.ts 写的，一一对应：
- *   plantSeed             → throwBall（事务 + FOR UPDATE 锁 + 余额重查，防并发透支）
- *   settleGardenForChild  → settlePokedexForChild（懒结算、游标、幂等、一次性事件）
- *   花园集齐收获           → 图鉴里程碑（但图鉴是留着的，不清空）
+ * 宝可梦图鉴主题的核心逻辑：
+ *   throwBall             → 扔球（事务 + FOR UPDATE 锁 + 余额重查，防并发透支）
+ *   settlePokedexForChild → 纪律结算（懒结算、游标、幂等、一次性事件）
+ *   集齐 N 种             → 图鉴里程碑（图鉴是留着的，不清空）
  */
 
 // 稀有度文案放在 lib/rarity.ts（无依赖，客户端组件也能安全引用），这里转出方便服务端代码使用
@@ -153,7 +153,7 @@ export const MAX_REFRESHES_PER_DAY = 3;
  * 从"收集到当前地区的 80% 就开下一个"改成挂在等级上，原因是那个触发条件
  * 奖励的是**在游戏里刷**（多买球多抓），而不是**打卡**。内容是这套系统里最硬的
  * 激励，它应该由"干了多少活"决定——等级正是那个量（见 lib/level.ts）。
- * 顺带三条独立的进度线（等级 / 图鉴收集率 / 花园收获轮数）合并成了一条。
+ * 顺带把几条独立的进度线合并成了一条。
  *
  * **下限必须 ≥151**：第一只传说宝可梦是 #144（急冻鸟），上限低于它的话
  * 传说那一档一只都没有，摇到传说时会退回随机挑一只普通的——稀有度体系静默失效。
@@ -392,7 +392,7 @@ async function createEncounters(
  * **已经抓到的那些保留**（今天的战果不该被刷掉），只替换没抓到和跑掉的。
  * 两只都抓到了也允许刷——那时候它的意思是"再花钱多遇两只"，同样合理。
  *
- * 事务 + FOR UPDATE 锁 + 余额重查，写法同 throwBall / plantSeed：连点两次不会扣两次。
+ * 事务 + FOR UPDATE 锁 + 余额重查，写法同 throwBall：连点两次不会扣两次。
  * 次数和价格都在事务里按当天最大的 refreshRound 重算，不采信页面传来的东西。
  */
 export async function refreshEncounters(childId: string, dateString: string) {
@@ -440,8 +440,8 @@ export async function refreshEncounters(childId: string, dateString: string) {
 /**
  * 朝**指定的那只**扔一个球。
  *
- * 事务内 + 对 Child 行加 FOR UPDATE 锁 + 重新聚合余额，写法和 lib/garden.ts 的
- * plantSeed 完全一致——孩子连点两次不能扣两次阳光。
+ * 事务内 + 对 Child 行加 FOR UPDATE 锁 + 重新聚合余额，写法和 throwBall 一致——
+ * 孩子连点两次不能扣两次阳光。
  * 成功率、剩余次数、保底都在事务里重算，不采信页面传来的任何东西。
  */
 export async function throwBall(
@@ -672,12 +672,12 @@ export async function throwBall(
 
 /**
  * 纪律循环：当天挣到的阳光低于 FLEE_EARN_THRESHOLD 的日子，随机一只宝可梦离家出走。
- * 对应花园主题里"僵尸吃掉一棵植物"，逻辑逐条对齐 settleGardenForChild：
+ * 逃跑判定（花园主题已删除，这里只剩宝可梦）：
  *   - 从游标次日逐天判定到"昨天"（今天没过完不判）
  *   - 先 ensureDailyTasksForDate 回填，堵住"不开 App 就躲过判定"
  *   - 整个函数一个事务 + FOR UPDATE 锁，幂等；游标推进后重复调用返回空数组
  *
- * 和花园共用 Child.gardenSettledThrough 这个游标——主题互斥，一个孩子只跑一套。
+ * 游标是 Child.settledThrough（列名保留了历史的 gardenSettledThrough）。
  */
 export async function settlePokedexForChild(childId: string): Promise<PokedexEvent[]> {
   const todayStr = todayDateString();
@@ -688,8 +688,8 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
     const child = await tx.child.findUnique({ where: { id: childId } });
     if (!child) throw new ActionError("找不到这个孩子");
 
-    let cursor = child.gardenSettledThrough
-      ? addDays(formatStoredDate(child.gardenSettledThrough), 1)
+    let cursor = child.settledThrough
+      ? addDays(formatStoredDate(child.settledThrough), 1)
       : todayDateString(child.createdAt);
 
     const events: PokedexEvent[] = [];
@@ -753,7 +753,7 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
     if (lastSettled) {
       await tx.child.update({
         where: { id: childId },
-        data: { gardenSettledThrough: dateStringToUtcDate(lastSettled) },
+        data: { settledThrough: dateStringToUtcDate(lastSettled) },
       });
     }
 

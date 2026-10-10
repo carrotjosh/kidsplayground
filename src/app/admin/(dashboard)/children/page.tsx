@@ -14,7 +14,6 @@ import { ChildRow } from "./ChildRow";
 import { DailyGoalForm } from "./DailyGoalForm";
 import { MilestoneForm } from "./MilestoneForm";
 import { PenaltyToggle } from "./PenaltyToggle";
-import { ThemePicker } from "./ThemePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +44,6 @@ export default async function ChildrenAdminPage() {
 
       <ChildForm isFirst={children.length === 0} />
 
-      {active && <ThemePicker current={active.theme} childName={active.name} />}
       {active && <DailyGoalForm childName={active.name} current={active.dailyGoalPoints} />}
       {active && active.theme === "POKEDEX" && (
         <MilestoneForm
@@ -67,7 +65,6 @@ export default async function ChildrenAdminPage() {
         <PenaltyToggle
           enabled={active.penaltyEnabled}
           childName={active.name}
-          theme={active.theme}
         />
       )}
 

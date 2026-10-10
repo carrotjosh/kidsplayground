@@ -17,7 +17,6 @@ import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { todayAsUtcDate, todayDateString } from "../src/lib/date";
-import { plantSeed } from "../src/lib/garden";
 import { ensureTodayEncounters, throwBall } from "../src/lib/pokedex";
 import { fulfillRedemption, redeemReward } from "../src/lib/rewards";
 import { adjustPointsManually } from "../src/lib/points";
@@ -67,7 +66,7 @@ async function createTenant(tag: string) {
     points: 10,
   });
   const reward = (await prisma.reward.findFirst({ where: { childId: child.id } }))!;
-  const plantType = (await prisma.plantType.findFirst({ where: { childId: child.id } }))!;
+
   const ballType = (await prisma.ballType.findFirst({ where: { childId: child.id } }))!;
   await ensureTodayEncounters(child.id, todayDateString());
   const encounter = (await prisma.dailyEncounter.findFirst({ where: { childId: child.id } }))!;
@@ -76,7 +75,7 @@ async function createTenant(tag: string) {
   await adjustPointsManually(child.id, 1000, "隔离测试初始余额");
   const redemption = await redeemReward(reward.id, child.id);
 
-  return { user, child, task, reward, plantType, ballType, encounter, redemption };
+  return { user, child, task, reward, ballType, encounter, redemption };
 }
 
 async function main() {
@@ -94,14 +93,12 @@ async function main() {
   await mustReject("撤销 B 的任务", () => revokeDailyTaskCompletion(B.task.id, A.child.id));
   await mustReject("兑换 B 的礼物", () => redeemReward(B.reward.id, A.child.id));
   await mustReject("核销 B 的兑换单", () => fulfillRedemption(B.redemption.id, A.child.id));
-  await mustReject("种 B 的植物品种", () => plantSeed(B.plantType.id, A.child.id));
   await mustReject("用 B 的精灵球扔", () => throwBall(A.encounter.id, B.ballType.id, A.child.id));
   await mustReject("扔 B 遇到的宝可梦", () => throwBall(B.encounter.id, A.ballType.id, A.child.id));
 
   console.log("\n反向再来一遍（防止只有单向做了校验）：");
   await mustReject("B 批准 A 的任务", () => approveDailyTask(A.task.id, B.child.id));
   await mustReject("B 兑换 A 的礼物", () => redeemReward(A.reward.id, B.child.id));
-  await mustReject("B 种 A 的植物品种", () => plantSeed(A.plantType.id, B.child.id));
   await mustReject("B 用 A 的精灵球扔", () => throwBall(B.encounter.id, A.ballType.id, B.child.id));
 
   console.log("\n各自操作自己的资源应该正常：");
@@ -125,10 +122,8 @@ async function main() {
       prisma.dailyEncounter.deleteMany({ where: { childId: t.child.id } }),
       prisma.ballType.deleteMany({ where: { childId: t.child.id } }),
       prisma.redemption.deleteMany({ where: { childId: t.child.id } }),
-      prisma.plant.deleteMany({ where: { childId: t.child.id } }),
       prisma.dailyTask.deleteMany({ where: { childId: t.child.id } }),
       prisma.reward.deleteMany({ where: { childId: t.child.id } }),
-      prisma.plantType.deleteMany({ where: { childId: t.child.id } }),
       prisma.taskTemplate.deleteMany({ where: { childId: t.child.id } }),
       prisma.child.delete({ where: { id: t.child.id } }),
       prisma.user.delete({ where: { id: t.user.id } }),

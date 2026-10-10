@@ -127,12 +127,9 @@ function buildSlug(name: string): string {
 }
 
 /**
- * 新建孩子档案，并铺上默认的任务模板 / 礼物 / 植物目录。
- *
- * 预置默认植物不是锦上添花而是必需的：花园的集卡规则要求正好 4 个品种
- * （见 lib/bootstrap.ts），一个植物目录为空的孩子，花园是坏的。
+ * 新建孩子档案，并铺上默认的任务模板 / 礼物 / 精灵球目录。
  */
-export async function createChildForCurrentUser(name: string, theme: KidTheme = KidTheme.GARDEN) {
+export async function createChildForCurrentUser(name: string, theme: KidTheme = KidTheme.POKEDEX) {
   const session = await requireParentSession();
   const ownerId = effectiveUserId(session);
 
@@ -171,8 +168,8 @@ export async function renameChild(childId: string, name: string) {
 /**
  * 删除孩子档案，连同名下全部数据。
  *
- * 必须按外键依赖顺序删：PointsLedger 同时指向 DailyTask / Redemption / Plant，
- * 所以它得第一个走；Redemption 和 Plant 又分别指向 Reward 和 PlantType。
+ * 必须按外键依赖顺序删：PointsLedger 指向 DailyTask / Redemption，所以它得先走；
+ * Redemption 再指向 Reward。
  * 整个过程包一个事务——删到一半失败会留下一堆挂不上父记录的孤儿行。
  */
 export async function deleteChild(childId: string) {
@@ -185,14 +182,12 @@ export async function deleteChild(childId: string) {
   await prisma.$transaction([
     prisma.pointsLedger.deleteMany({ where: { childId } }),
     prisma.redemption.deleteMany({ where: { childId } }),
-    prisma.plant.deleteMany({ where: { childId } }),
     prisma.caught.deleteMany({ where: { childId } }),
     // 图鉴主题的孩子只要打开过图鉴页就会生成当天的遇怪记录；这张表的外键是
     // ON DELETE RESTRICT，漏删会导致删除直接报外键冲突、整个事务回滚。
     prisma.dailyEncounter.deleteMany({ where: { childId } }),
     prisma.dailyTask.deleteMany({ where: { childId } }),
     prisma.reward.deleteMany({ where: { childId } }),
-    prisma.plantType.deleteMany({ where: { childId } }),
     prisma.ballType.deleteMany({ where: { childId } }),
     prisma.taskTemplate.deleteMany({ where: { childId } }),
     prisma.child.delete({ where: { id: childId } }),

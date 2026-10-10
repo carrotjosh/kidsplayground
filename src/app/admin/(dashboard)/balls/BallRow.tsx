@@ -27,7 +27,7 @@ export function BallRow({
   );
 
   return (
-    // 骨架和礼物/植物那两行一致：信息区 min-w-0 可收缩、控件区 shrink-0 永不换行。
+    // 骨架和礼物那一行一致：信息区 min-w-0 可收缩、控件区 shrink-0 永不换行。
     // 原来外层是 flex-wrap 而信息区没有 min-w-0，于是大师球那行（描述最长，多了"（必中）"）
     // 会把整组控件顶到第二行，四行长得不一样。
     <div className="flex items-center justify-between gap-3 pixel-card bg-white p-4">

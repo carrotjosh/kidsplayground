@@ -8,7 +8,7 @@
  * 跑完把临时租户连同数据一起删掉（放在 finally 里，中途炸了也不留垃圾）。
  *
  * 为什么值得常驻一个脚本：这些数字全是模拟出来的平衡值，以后任何人调一个常量都可能
- * 悄悄踩穿"扔球不能赚钱""花园必须能集齐"这类前提，而那些错误在界面上完全看不出来。
+ * 悄悄踩穿"扔球不能赚钱""球价要有梯度"这类前提，而那些错误在界面上完全看不出来。
  */
 import "dotenv/config";
 
@@ -40,19 +40,6 @@ import {
   MAX_LEVEL,
   totalEarned,
 } from "../src/lib/level";
-import {
-  checkGardenStageUp,
-  computeHarvestBonus,
-  gardenSetSize,
-  gardenSide,
-  gardenSize,
-  GARDEN_STAGES,
-  HARVEST_MAX_INTEREST_DAYS,
-  HARVEST_MAX_MULTIPLIER,
-  gardenStageForLevel,
-  GARDEN_STAGE_LEVELS,
-  settleGardenForChild,
-} from "../src/lib/garden";
 import {
   ensureTodayEncounters,
   settlePokedexForChild,
@@ -107,10 +94,8 @@ async function destroyTenant(childId: string, userId: string) {
     prisma.dailyEncounter.deleteMany({ where: { childId } }),
     prisma.ballType.deleteMany({ where: { childId } }),
     prisma.redemption.deleteMany({ where: { childId } }),
-    prisma.plant.deleteMany({ where: { childId } }),
     prisma.dailyTask.deleteMany({ where: { childId } }),
     prisma.reward.deleteMany({ where: { childId } }),
-    prisma.plantType.deleteMany({ where: { childId } }),
     prisma.taskTemplate.deleteMany({ where: { childId } }),
     prisma.child.delete({ where: { id: childId } }),
     prisma.user.delete({ where: { id: userId } }),
@@ -175,33 +160,7 @@ async function main() {
   if (refreshCosts(0).every((c) => c >= 1)) pass("日薪 0 时刷新费仍 ≥1，不会白嫖");
   else fail("日薪 0 时的刷新费", `是 ${refreshCosts(0)}`);
 
-  // ---------- 花园：收获利息 ----------
-  // 这一组守的是一个真实存在过的严重漏洞：收获原来是"成本 × 1.5"、且收获会清空全部格子，
-  // 而种植和收获都没有天数限制——余额够种满一园之后，"种满→收获→再种满→再收获"
-  // 可以在同一次操作里无限循环，每圈净赚 50%，整个阳光经济直接作废。
-  console.log("\n【花园】收获按天计息，当天种当天收没有利息");
   const today = todayDateString();
-  const plantsAt = (costs: number[], daysAgo: number) =>
-    costs.map((cost) => ({
-      ledgerEntry: { amount: -cost },
-      plantedOnDate: dateStringToUtcDate(addDays(today, -daysAgo)),
-    }));
-  const fullSet = [8, 8, 8, 8, 12, 12, 12, 12, 18, 18, 18, 18, 30, 30, 30, 30];
-
-  const instant = computeHarvestBonus(plantsAt(fullSet, 0), today);
-  expect("种满一园的本金", instant.spent, 272);
-  expect("当天种当天收的收获（必须等于本金，否则能刷循环）", instant.bonus, 272);
-
-  const ripe = computeHarvestBonus(plantsAt(fullSet, HARVEST_MAX_INTEREST_DAYS), today);
-  expect(`养满 ${HARVEST_MAX_INTEREST_DAYS} 天的收获`, ripe.bonus, Math.ceil(272 * HARVEST_MAX_MULTIPLIER));
-
-  const overripe = computeHarvestBonus(plantsAt(fullSet, 90), today);
-  expect("养 90 天也不会超过上限（利息封顶）", overripe.bonus, ripe.bonus);
-
-  // 逐棵取整的话 16 棵能白捡十几点，所以只在总额上取整一次
-  const halfway = computeHarvestBonus(plantsAt(fullSet, 3), today);
-  expect("养 3 天", halfway.bonus, Math.ceil(272 * 1.15));
-
   const { user, child } = await createTenant();
   try {
     // ---------- 3. 干净状态 ----------
@@ -267,18 +226,6 @@ async function main() {
       "里程碑调到 6 天工资 → 报出「刷里程碑能赚阳光」"
     );
     (AMOUNT_MULTIPLIERS as { pokedexMilestone: number }).pokedexMilestone = origMilestone;
-
-    // (2) 植物删到 3 种 → 4×4 的花园永远集不齐
-    await prisma.child.update({ where: { id: child.id }, data: { theme: "GARDEN" } });
-    const extra = await prisma.plantType.findFirstOrThrow({ where: { childId: child.id } });
-    await prisma.plantType.update({ where: { id: extra.id }, data: { active: false } });
-    expectFinding(
-      (await auditEconomy(child.id)).findings,
-      "永远集不齐",
-      "植物只剩 3 种 → 报出「花园集不齐」"
-    );
-    await prisma.plantType.update({ where: { id: extra.id }, data: { active: true } });
-    await prisma.child.update({ where: { id: child.id }, data: { theme: "POKEDEX" } });
 
     // (3) 达标线高过日薪 → 永远达不了标
     await prisma.child.update({ where: { id: child.id }, data: { dailyGoalPoints: 99 } });
@@ -358,10 +305,9 @@ async function main() {
     async function calibrate(factor: number) {
       const scale = (n: number) => Math.max(1, Math.round(n * factor));
       const c = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
-      const [rewards, balls, plants] = await Promise.all([
+      const [rewards, balls] = await Promise.all([
         prisma.reward.findMany({ where: { childId: child.id, cost: { gt: 0 } } }),
         prisma.ballType.findMany({ where: { childId: child.id } }),
-        prisma.plantType.findMany({ where: { childId: child.id } }),
       ]);
       await prisma.$transaction([
         ...rewards.map((r) =>
@@ -369,9 +315,6 @@ async function main() {
         ),
         ...balls.map((b) =>
           prisma.ballType.update({ where: { id: b.id }, data: { cost: scale(b.cost) } })
-        ),
-        ...plants.map((p) =>
-          prisma.plantType.update({ where: { id: p.id }, data: { cost: scale(p.cost) } })
         ),
         prisma.child.update({
           where: { id: child.id },
@@ -410,44 +353,6 @@ async function main() {
     else fail("校准幂等", "第二次仍然想改价");
     if (!after.findings.some((f) => f.title.includes("基准从"))) pass("调到位后不再提示漂移");
     else fail("校准后", "还在提示漂移");
-
-    // ---------- 花园：僵尸不再能被白嫖免疫 ----------
-    // 原来"当天种过植物"= 完全免疫。但收获会清空 16 个格子、永远有空位，
-    // 所以一天种一棵 8 阳光的向日葵就能永久免疫，而那 8 阳光收获时还连本带利还回来，
-    // 免疫等于负成本白送——"任务没做完会有后果"这条规则实际上根本不存在。
-    console.log("\n【花园】任务没做完必定被吃一棵，当天新种的挡在最前面");
-    await prisma.child.update({
-      where: { id: child.id },
-      data: { theme: "GARDEN", gardenSettledThrough: dateStringToUtcDate(addDays(today, -2)) },
-    });
-    const mkPlant = (slot: number, title: string, daysAgo: number) =>
-      prisma.plant.create({
-        data: {
-          childId: child.id,
-          title,
-          slot,
-          status: "ALIVE",
-          plantedOnDate: dateStringToUtcDate(addDays(today, -daysAgo)),
-        },
-      });
-    const oldPlant = await mkPlant(0, "老向日葵", 5);
-    // 判定的是"昨天"，所以"当天新种"对应 plantedOnDate = 昨天
-    const freshPlant = await mkPlant(1, "昨天种的向日葵", 1);
-
-    // 昨天的任务会被 ensureDailyTasksForDate 按模板补出来，全是 PENDING → 判定为没通过
-    const gardenEvents = await settleGardenForChild(child.id);
-    const eaten = gardenEvents.filter((e) => e.outcome === "PLANT_EATEN");
-    if (eaten.length === 1) pass("当天种了植物也照样被吃了一棵（不再凭空免疫）");
-    else fail("僵尸判定", `产生了 ${eaten.length} 条被吃事件，期望 1 条`);
-    if (eaten[0] && "shielded" in eaten[0] && eaten[0].shielded) pass("事件标记为「新种的挡了一下」");
-    else fail("shielded 标记", "没有标上");
-
-    const [oldAfter, freshAfter] = await Promise.all([
-      prisma.plant.findUniqueOrThrow({ where: { id: oldPlant.id } }),
-      prisma.plant.findUniqueOrThrow({ where: { id: freshPlant.id } }),
-    ]);
-    expect("当天新种的那棵被吃", freshAfter.status, "EATEN");
-    expect("养了 5 天的那棵还活着", oldAfter.status, "ALIVE");
 
     // ---------- 图鉴里程碑可配置 ----------
     console.log("\n【里程碑】金额和步长都能被家长固定住");
@@ -620,7 +525,7 @@ async function main() {
         await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
         await prisma.child.update({
           where: { id: child.id },
-          data: { theme: "POKEDEX", penaltyEnabled: true, gardenSettledThrough: dateStringToUtcDate(addDays(yesterday, -1)) },
+          data: { theme: "POKEDEX", penaltyEnabled: true, settledThrough: dateStringToUtcDate(addDays(yesterday, -1)) },
         });
         await prisma.caught.create({
           data: {
@@ -703,10 +608,10 @@ async function main() {
           date: dateStringToUtcDate(yesterday), status: "PENDING_REVIEW",
         },
       });
-      const beforeCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).gardenSettledThrough;
+      const beforeCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).settledThrough;
       const waitEv = await settlePokedexForChild(child.id);
       expect("已提交没批：当天不判（不跑）", waitEv.filter((e) => e.outcome === "FLED_AWAY").length, 0);
-      const afterCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).gardenSettledThrough;
+      const afterCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).settledThrough;
       expect("已提交没批：游标没有越过这一天", afterCursor?.getTime() === beforeCursor?.getTime(), true);
 
       // 恢复原样
@@ -715,111 +620,60 @@ async function main() {
       if (savedTemplates.length) await prisma.taskTemplate.createMany({ data: savedTemplates });
       if (savedTasks.length) await prisma.dailyTask.createMany({ data: savedTasks });
       await prisma.caught.deleteMany({ where: { childId: child.id } });
-      await prisma.child.update({ where: { id: child.id }, data: { gardenSettledThrough: null } });
+      await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
     }
 
     // ---------- 惩罚开关：关掉之后游标仍然要走 ----------
     //
     // 这是整个开关**唯一真正危险**的地方。如果靠"不调用结算函数"来关，
     // 游标会停在原地；家长关一个月再打开，那一刻会把 30 天一次性补判，
-    // 一口气吃掉一串植物 / 跑掉一串宝可梦——比不关还糟，而且家长完全预料不到。
+    // 一口气跑掉一串宝可梦——比不关还糟，而且家长完全预料不到。
     // 所以断言两件事：关闭期间不产生惩罚，且**游标照样推进到昨天**。
     console.log("\n【惩罚开关】关掉之后不惩罚，但游标必须照常推进");
-    await prisma.plant.deleteMany({ where: { childId: child.id } });
+    await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+    await prisma.caught.deleteMany({ where: { childId: child.id } });
+    await prisma.caught.create({
+      data: {
+        childId: child.id, speciesId: 25, nameZh: "皮卡丘", types: ["electric"], rarity: 1,
+        artUrl: "", gender: "UNKNOWN", ability: "测试", moveName: "测试", movePower: 1,
+        hp: 1, attack: 1, defense: 1, speed: 1, ballTier: "POKE", status: "OWNED",
+        caughtOnDate: dateStringToUtcDate(addDays(today, -10)),
+      },
+    });
     await prisma.child.update({
       where: { id: child.id },
       data: {
         penaltyEnabled: false,
-        gardenSettledThrough: dateStringToUtcDate(addDays(today, -6)),
+        settledThrough: dateStringToUtcDate(addDays(today, -6)),
       },
     });
-    await mkPlant(0, "关闭期间的向日葵", 6);
-    const offEvents = await settleGardenForChild(child.id);
-    expect("关闭期间的惩罚事件数", offEvents.filter((e) => e.outcome === "PLANT_EATEN").length, 0);
+    const offEvents = await settlePokedexForChild(child.id);
+    expect("关闭期间的惩罚事件数", offEvents.filter((e) => e.outcome === "FLED_AWAY").length, 0);
     expect(
-      "关闭期间植物还活着",
-      (await prisma.plant.findFirstOrThrow({ where: { childId: child.id } })).status,
-      "ALIVE"
+      "关闭期间宝可梦还在",
+      await prisma.caught.count({ where: { childId: child.id, status: "OWNED" } }),
+      1
     );
     const afterOff = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
     expect(
       "游标已推进到昨天（重新打开时不会被一次性补罚）",
-      afterOff.gardenSettledThrough && formatStoredDate(afterOff.gardenSettledThrough),
+      afterOff.settledThrough && formatStoredDate(afterOff.settledThrough),
       addDays(today, -1)
     );
 
     // 打开之后照常惩罚，而且只从现在往后算
     await prisma.child.update({
       where: { id: child.id },
-      data: { penaltyEnabled: true, gardenSettledThrough: dateStringToUtcDate(addDays(today, -2)) },
+      data: { penaltyEnabled: true, settledThrough: dateStringToUtcDate(addDays(today, -2)) },
     });
-    const onEvents = await settleGardenForChild(child.id);
-    expect("重新打开后恢复惩罚", onEvents.filter((e) => e.outcome === "PLANT_EATEN").length, 1);
+    const onEvents = await settlePokedexForChild(child.id);
+    expect("重新打开后恢复惩罚", onEvents.filter((e) => e.outcome === "FLED_AWAY").length, 1);
 
-    await prisma.plant.deleteMany({ where: { childId: child.id } });
-    await prisma.child.update({
-      where: { id: child.id },
-      data: { gardenSettledThrough: null },
-    });
-
-    // ---------- 花园分级 ----------
-    console.log("\n【花园】按打卡等级升级，但要等这一园收获掉才生效");
-    expect("各级边长", [...GARDEN_STAGES], [4, 5, 6, 7]);
-    expect("各级要求的等级", [...GARDEN_STAGE_LEVELS], [1, 4, 8, 12]);
-    expect("第 1 级：4 种 × 各 4 棵 = 16 格", [gardenSetSize(1), gardenSize(1)], [4, 16]);
-    expect("第 4 级：7 种 × 各 7 棵 = 49 格", [gardenSetSize(4), gardenSize(4)], [7, 49]);
-    expect("越界的级数夹到最大级", gardenSide(99), 7);
-    expect(
-      "等级 → 该到第几级花园",
-      [1, 3, 4, 7, 8, 11, 12, 15].map(gardenStageForLevel),
-      [1, 1, 2, 2, 3, 3, 4, 4]
-    );
-
-    expect("新建档案默认上架的植物种类", 
-      await prisma.plantType.count({ where: { childId: child.id, active: true } }),
-      gardenSetSize(1)
-    );
-    if ((await checkGardenStageUp(child.id)) === null) pass("1 级时不会升花园");
-    else fail("1 级升花园", "居然升了");
-
-    // 等级够了，但园子里还种着东西 → 先不升，免得刚集齐的一整套当场作废
-    await prisma.child.update({ where: { id: child.id }, data: { level: 4 } });
-    const holdPlant = await prisma.plant.create({
-      data: { childId: child.id, title: "占位", slot: 0, status: "ALIVE" },
-    });
-    if ((await checkGardenStageUp(child.id)) === null) pass("园子里还有植物时先不升级");
-    else fail("提前升级", "把孩子正在种的一园作废了");
-
-    await prisma.plant.delete({ where: { id: holdPlant.id } });
-    const up = await checkGardenStageUp(child.id);
-    expect("收获空了之后升到", up?.stage, 2);
-    expect("新边长", up?.side, 5);
-    expect("顺带解锁的新植物", up?.unlockedPlant, "寒冰射手");
-    expect(
-      "上架种类数跟着变成 5",
-      await prisma.plantType.count({ where: { childId: child.id, active: true } }),
-      5
-    );
-    if ((await checkGardenStageUp(child.id)) === null) pass("等级不够下一级时不会连升（幂等）");
-    else fail("连续升级", "又升了一级");
-
-    // 等级跳很远也一次只升一级——每一级都该被玩过
-    await prisma.child.update({ where: { id: child.id }, data: { level: 15 } });
-    expect("等级直接跳到 15 也只升一级", (await checkGardenStageUp(child.id))?.stage, 3);
-
-    await prisma.plantType.updateMany({ where: { childId: child.id }, data: { active: true } });
-    if ((await checkGardenStageUp(child.id)) === null) pass("没有可解锁的新品种时拒绝升级");
-    else fail("死局保护", "在没有备用品种时仍然升了级");
-
-    await prisma.pointsLedger.deleteMany({ where: { childId: child.id, type: "GARDEN_BONUS" } });
-    await prisma.child.update({
-      where: { id: child.id },
-      data: { theme: "POKEDEX", gardenStage: 1, level: 1 },
-    });
+    await prisma.caught.deleteMany({ where: { childId: child.id } });
+    await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
 
     // ---------- 打卡等级 ----------
-    // 等级只能反映"干了多少活"。算进花园收获/图鉴奖励的话，花园孩子刷一轮就升级、
-    // 图鉴孩子净吞 56% 反而升得慢，同一张等级表对两个主题就不公平了。
+    // 等级只能反映"干了多少活"。算进图鉴奖励的话，孩子靠扔球刷奖励就能升级。
     console.log("\n【等级】只算打卡挣的阳光，且只增不减");
     if (LEVELS.every((l, i) => i === 0 || l.need > LEVELS[i - 1].need)) pass("门槛严格递增");
     else fail("等级门槛", "不是严格递增的");
@@ -831,14 +685,13 @@ async function main() {
     expect("满级后没有下一级门槛", levelProgress(MAX_LEVEL, 9_999_999).next, null);
 
     await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
-    const earn = (amount: number, type: "TASK_COMPLETE" | "GARDEN_BONUS" | "POKEDEX_BONUS" | "MANUAL_ADJUST" | "TASK_REVOKE") =>
+    const earn = (amount: number, type: "TASK_COMPLETE" | "POKEDEX_BONUS" | "MANUAL_ADJUST" | "TASK_REVOKE") =>
       prisma.pointsLedger.create({ data: { childId: child.id, amount, reason: "等级测试", type } });
 
     await earn(100, "TASK_COMPLETE");
-    await earn(5000, "GARDEN_BONUS");
     await earn(5000, "POKEDEX_BONUS");
     await earn(5000, "MANUAL_ADJUST");
-    expect("花园/图鉴/手动加分都不计入等级", await totalEarned(child.id), 100);
+    expect("图鉴/手动加分都不计入等级", await totalEarned(child.id), 100);
 
     await earn(-30, "TASK_REVOKE");
     expect("撤销打卡从累计里扣掉", await totalEarned(child.id), 70);

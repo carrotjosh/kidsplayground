@@ -28,7 +28,7 @@ export default async function TenantsAdminPage() {
     },
   });
 
-  // "最近活跃"用最后一条阳光流水的时间估算——打卡、兑换、种植物都会产生流水，
+  // "最近活跃"用最后一条阳光流水的时间估算——打卡、兑换、买球都会产生流水，
   // 比单纯看登录时间更能反映这家人还在不在用。一次 groupBy 拿全，不要每个账号查一次。
   const lastActivity = await prisma.pointsLedger.groupBy({
     by: ["childId"],
