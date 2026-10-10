@@ -24,6 +24,7 @@ import type { Annotated } from "@/components/Ruby";
 import { ActionError } from "@/lib/errors";
 import { annotate } from "@/lib/pinyin";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
+import { FLEE_EARN_THRESHOLD } from "@/lib/flee";
 
 /**
  * 宝可梦图鉴主题的核心逻辑。整体照着 lib/garden.ts 写的，一一对应：
@@ -34,6 +35,8 @@ import { ensureDailyTasksForDate } from "@/lib/tasks";
 
 // 稀有度文案放在 lib/rarity.ts（无依赖，客户端组件也能安全引用），这里转出方便服务端代码使用
 export { RARITY_LABELS } from "@/lib/rarity";
+
+export { FLEE_EARN_THRESHOLD } from "@/lib/flee";
 
 /** 每天出现几只。 */
 export const DAILY_ENCOUNTER_COUNT = 2;
@@ -668,11 +671,10 @@ export async function throwBall(
 }
 
 /**
- * 纪律循环：任务没完成的日子，有一只宝可梦离家出走。
+ * 纪律循环：当天挣到的阳光低于 FLEE_EARN_THRESHOLD 的日子，随机一只宝可梦离家出走。
  * 对应花园主题里"僵尸吃掉一棵植物"，逻辑逐条对齐 settleGardenForChild：
  *   - 从游标次日逐天判定到"昨天"（今天没过完不判）
  *   - 先 ensureDailyTasksForDate 回填，堵住"不开 App 就躲过判定"
- *   - 当天抓到过宝可梦 → 免疫（对应"当天种了植物免疫"）
  *   - 整个函数一个事务 + FOR UPDATE 锁，幂等；游标推进后重复调用返回空数组
  *
  * 和花园共用 Child.gardenSettledThrough 这个游标——主题互斥，一个孩子只跑一套。
@@ -703,18 +705,26 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
           status: { not: TaskStatus.CANCELLED },
         },
       });
-      const caughtThatDay = await tx.caught.count({
-        where: { childId, caughtOnDate: dateStringToUtcDate(cursor) },
-      });
+
+      // 孩子已经点了「做完了」、但家长还没批：这一天先不判，也不往后推游标。
+      // 批的时候阳光会算进去，那一天要是够了就不跑；等不到批的话，就一直等着，
+      // 而不是替家长的忘记给孩子判一个"没做"。
+      if (child.penaltyEnabled && dayTasks.some((t) => t.status === TaskStatus.PENDING_REVIEW)) {
+        break;
+      }
+      // 当天挣到的阳光 = 已完成任务的分值之和（和日历口径一致）
+      const earnedThatDay = dayTasks
+        .filter((t) => t.status === TaskStatus.DONE)
+        .reduce((sum, t) => sum + t.points, 0);
 
       const isSafe =
         // 家长把惩罚关了。**注意循环照跑、游标照推**——只是不执行惩罚。
         // 靠"不调用这个函数"来关的话，游标会停在原地，重新打开的那一刻
         // 会把攒下来的所有天一次性补判，一口气跑掉一串宝可梦。
         !child.penaltyEnabled ||
-        caughtThatDay > 0 ||
+        // 当天一项任务都没排，没有可挣的东西，不算失败
         dayTasks.length === 0 ||
-        dayTasks.every((t) => t.status === TaskStatus.DONE);
+        earnedThatDay >= FLEE_EARN_THRESHOLD;
 
       if (!isSafe) {
         const owned = await tx.caught.findMany({

@@ -49,7 +49,7 @@ export const THEME_CHOICES: { theme: KidTheme; emoji: string; name: string; desc
     theme: "POKEDEX",
     emoji: "📕",
     name: "宝可梦图鉴",
-    desc: "阳光买精灵球去抓宝可梦，球越好越容易遇到并抓住稀有的；任务没完成，会有一只离家出走；每集齐 8 种奖励阳光，同一种攒够数量还有额外奖励。",
+    desc: "阳光买精灵球去抓宝可梦，球越好越容易遇到并抓住稀有的；当天挣到不到 5 阳光，会有一只离家出走；每集齐 8 种奖励阳光，同一种攒够数量还有额外奖励。",
   },
 ];
 

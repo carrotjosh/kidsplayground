@@ -16,7 +16,7 @@ import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
-import { submitDailyTaskForReview } from "../src/lib/tasks";
+import { approveDailyTask, submitDailyTaskForReview } from "../src/lib/tasks";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
@@ -55,6 +55,7 @@ import {
 } from "../src/lib/garden";
 import {
   ensureTodayEncounters,
+  settlePokedexForChild,
   throwBall,
   refreshEncounters,
   REGIONS,
@@ -605,6 +606,117 @@ async function main() {
     await prisma.pointsLedger.deleteMany({ where: { childId: child.id, dailyTaskId: t2.id } });
     await prisma.dailyTask.deleteMany({ where: { id: { in: [t1.id, t2.id] } } });
     await prisma.child.update({ where: { id: child.id }, data: { autoApprove: false } });
+
+    // ---------- 逃跑规则：当天挣到不到 5 阳光才跑 ----------
+    console.log("\n【逃跑】当天挣到的阳光不到 FLEE_EARN_THRESHOLD 才跑，和有没有抓到无关");
+    {
+      const yesterday = addDays(todayDateString(), -1);
+      const savedTemplates = await prisma.taskTemplate.findMany({ where: { childId: child.id } });
+      const savedTasks = await prisma.dailyTask.findMany({ where: { childId: child.id } });
+      const reset = async () => {
+        await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+        await prisma.taskTemplate.deleteMany({ where: { childId: child.id } });
+        await prisma.caught.deleteMany({ where: { childId: child.id } });
+        await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+        await prisma.child.update({
+          where: { id: child.id },
+          data: { theme: "POKEDEX", penaltyEnabled: true, gardenSettledThrough: dateStringToUtcDate(addDays(yesterday, -1)) },
+        });
+        await prisma.caught.create({
+          data: {
+            childId: child.id, speciesId: 25, nameZh: "皮卡丘", types: ["electric"], rarity: 1,
+            artUrl: "", gender: "UNKNOWN", ability: "测试", moveName: "测试", movePower: 1,
+            hp: 1, attack: 1, defense: 1, speed: 1, ballTier: "POKE", status: "OWNED",
+            caughtOnDate: dateStringToUtcDate(addDays(yesterday, -1)),
+          },
+        });
+      };
+      const seedDay = async (points: number[]) => {
+        await prisma.dailyTask.createMany({
+          data: points.map((pts, i) => ({
+            childId: child.id, title: `自检${i}`, points: pts, source: "ADHOC" as const,
+            date: dateStringToUtcDate(yesterday), status: pts > 0 ? "DONE" as const : "PENDING" as const,
+          })),
+        });
+      };
+
+      await reset(); await seedDay([4]);
+      const ev1 = await settlePokedexForChild(child.id);
+      expect("挣到 4（不到 5）→ 跑一只", ev1.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+
+      await reset(); await seedDay([5]);
+      const ev2 = await settlePokedexForChild(child.id);
+      expect("挣到刚好 5 → 不跑", ev2.filter((e) => e.outcome === "FLED_AWAY").length, 0);
+
+      await reset(); await seedDay([0]);
+      const ev3 = await settlePokedexForChild(child.id);
+      expect("一分都没挣 → 跑", ev3.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+
+      // 已经不再有「当天抓到就免疫」：有 caught 行但挣得少，照样跑
+      await reset(); await seedDay([3]);
+      const ev4 = await settlePokedexForChild(child.id);
+      expect("挣得少、即使当天抓到过也跑（免疫已取消）", ev4.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+
+      await reset();
+      await prisma.child.update({ where: { id: child.id }, data: { penaltyEnabled: false } });
+      await seedDay([0]);
+      const ev5 = await settlePokedexForChild(child.id);
+      expect("惩罚关掉 → 挣 0 也不跑", ev5.filter((e) => e.outcome === "FLED_AWAY").length, 0);
+      // 补批：昨天挣 4 → 跑一只；之后补一项 2 分的任务批准 → 总共 6 → 接回来
+      await reset(); await seedDay([4]);
+      const fledEv = await settlePokedexForChild(child.id);
+      expect("补批前：昨天挣 4 跑了一只", fledEv.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+      const late = await prisma.dailyTask.create({
+        data: {
+          childId: child.id, title: "补的一项", points: 2, source: "ADHOC",
+          date: dateStringToUtcDate(yesterday), status: "PENDING_REVIEW",
+        },
+      });
+      await approveDailyTask(late.id, child.id);
+      expect(
+        "补批到 6 阳光 → 跑掉的那只回来了",
+        await prisma.caught.count({ where: { childId: child.id, status: "FLED" } }),
+        0
+      );
+
+      // 补批后还是不够 5 → 不接回来
+      await reset(); await seedDay([4]);
+      await settlePokedexForChild(child.id);
+      const small = await prisma.dailyTask.create({
+        data: {
+          childId: child.id, title: "补的小项", points: 0, source: "ADHOC",
+          date: dateStringToUtcDate(yesterday), status: "PENDING_REVIEW",
+        },
+      });
+      await approveDailyTask(small.id, child.id);
+      expect(
+        "补批后仍然不够 5 → 不接回来",
+        await prisma.caught.count({ where: { childId: child.id, status: "FLED" } }),
+        1
+      );
+
+      // 有一天的任务已经点了「做完了」但家长还没批：不判，游标也不动
+      await reset();
+      await prisma.dailyTask.create({
+        data: {
+          childId: child.id, title: "等批的", points: 3, source: "ADHOC",
+          date: dateStringToUtcDate(yesterday), status: "PENDING_REVIEW",
+        },
+      });
+      const beforeCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).gardenSettledThrough;
+      const waitEv = await settlePokedexForChild(child.id);
+      expect("已提交没批：当天不判（不跑）", waitEv.filter((e) => e.outcome === "FLED_AWAY").length, 0);
+      const afterCursor = (await prisma.child.findUniqueOrThrow({ where: { id: child.id } })).gardenSettledThrough;
+      expect("已提交没批：游标没有越过这一天", afterCursor?.getTime() === beforeCursor?.getTime(), true);
+
+      // 恢复原样
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.taskTemplate.deleteMany({ where: { childId: child.id } });
+      if (savedTemplates.length) await prisma.taskTemplate.createMany({ data: savedTemplates });
+      if (savedTasks.length) await prisma.dailyTask.createMany({ data: savedTasks });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.child.update({ where: { id: child.id }, data: { gardenSettledThrough: null } });
+    }
 
     // ---------- 惩罚开关：关掉之后游标仍然要走 ----------
     //

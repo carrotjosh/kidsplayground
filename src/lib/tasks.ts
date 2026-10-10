@@ -1,6 +1,7 @@
 import { LedgerType, ScheduleType, TaskSource, TaskStatus } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
+import { restoreFledIfRecovered } from "@/lib/flee";
 import { getDayType } from "@/lib/holidays";
 import {
   dateStringToUtcDate,
@@ -230,6 +231,10 @@ export async function approveDailyTask(
         },
       }),
     ]);
+
+    // 补批可能让那一天的阳光从不到 5 变成够 5：那一天要是因此跑掉过一只，就接回来。
+    // 注意是在批完之后再算，所以算的是最终的数。
+    await restoreFledIfRecovered(tx, childId, task.date);
 
     return updatedTask;
   });
