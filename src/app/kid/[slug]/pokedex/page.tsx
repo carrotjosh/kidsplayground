@@ -21,6 +21,7 @@ import {
   ensureTodayEncounters,
   MAX_ATTEMPTS_PER_ENCOUNTER,
   masteryGoal,
+  FLEE_EARN_THRESHOLD,
   MAX_REFRESHES_PER_DAY,
   RARITY_LABELS,
   REGIONS,
@@ -111,14 +112,14 @@ export default async function PokedexPage({ params }: { params: Promise<{ slug: 
 
       {levelUp && <LevelUpBanner levelUp={levelUp} />}
 
-      {/* 任务没完成，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
+      {/* 当天挣到的阳光不到 FLEE_EARN_THRESHOLD，宝可梦离家出走了 —— 对应花园主题里僵尸吃植物的提示 */}
       {events.length > 0 && (
         <section className="flex flex-col gap-2">
           {events.map((event, i) => (
             <p key={i} className="pixel-card kid-text bg-nes-red p-4 text-center text-white lg:p-5">
               {event.outcome === "FLED_AWAY"
-                ? `💨 ${event.date}：任务没有全部完成，${event.nameZh} 离家出走了！`
-                : `💨 ${event.date}：任务没有全部完成，还好图鉴里还没有宝可梦～`}
+                ? `💨 ${event.date}：这一天只挣到不到 ${FLEE_EARN_THRESHOLD} 阳光，${event.nameZh} 离家出走了！`
+                : `💨 ${event.date}：这一天只挣到不到 ${FLEE_EARN_THRESHOLD} 阳光，还好图鉴里还没有宝可梦～`}
             </p>
           ))}
         </section>
