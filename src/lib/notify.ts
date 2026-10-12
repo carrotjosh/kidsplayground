@@ -102,8 +102,17 @@ async function post(
   };
   try {
     const res = await fetch(endpoint, { ...init, signal: controller.signal });
-    if (!res.ok) {
-      console.warn(`[notify] 推送返回 ${res.status}：${endpoint.slice(0, 60)}`);
+    const text = await res.text();
+    // Bark 失败时经常还是 HTTP 200，错误藏在 body 的 code 里（比如 device_key 不对），
+    // 所以两个都要看。之前只看 HTTP 状态，结果测试按钮报「已发送」，其实对方已经拒了。
+    let code: number | undefined;
+    try {
+      code = (JSON.parse(text) as { code?: number }).code;
+    } catch {
+      // 不是 JSON 就只看 HTTP 状态
+    }
+    if (!res.ok || (code !== undefined && code !== 200)) {
+      throw new Error(`推送没成功（HTTP ${res.status}）：${text.slice(0, 200)}`);
     }
   } finally {
     clearTimeout(timer);
