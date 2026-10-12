@@ -61,5 +61,5 @@ export async function testWebhookAction(
     const msg = error instanceof Error ? error.message : String(error);
     return `发送失败：${msg.includes("abort") ? "超时，检查地址是否正确" : msg}`;
   }
-  return "✅ 已发送，去微信看看收到没有";
+  return "✅ 已发送，看看手机上收到没有";
 }
