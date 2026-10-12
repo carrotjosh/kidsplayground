@@ -13,8 +13,14 @@ import { upstreamArtUrl } from "@/lib/pokemonArt";
 /** 全国图鉴目前 1025 只，留点余量；上限主要是防止有人拿它当任意 URL 转发器。 */
 const MAX_SPECIES_ID = 1300;
 
-/** 图片按 id 永远不变，可以放心让浏览器和 CDN 长期缓存。 */
-const CACHE_CONTROL = "public, max-age=31536000, immutable";
+/**
+ * 图片按 id 永远不变，可以放心让浏览器和 CDN 长期缓存。
+ *
+ * 光有 max-age 不够：Vercel 的 CDN 只缓存带 s-maxage 的函数响应。之前的日志里 20 张立绘
+ * 全是 cache: MISS，也就是每个人每看一次都要重新走一遍 Vercel 函数 → 新加坡 → GitHub，
+ * 慢的时候整张图超时就是「挂了」。加上 s-maxage 之后，第一次取回来以后就直接从 CDN 边缘发。
+ */
+const CACHE_CONTROL = "public, max-age=31536000, s-maxage=31536000, immutable";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
