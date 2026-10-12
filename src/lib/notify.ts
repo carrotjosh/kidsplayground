@@ -39,7 +39,7 @@ function buildPayload(
   if (url.includes("pushdeer")) {
     return { text: title, desp: content, type: "text" };
   }
-  if (url.includes("bark") || url.includes("day.app")) {
+  if (isBark(url)) {
     // Bark 的字段：level 决定能不能穿透专注模式（timeSensitive 会在锁屏上亮、有声音，
     // 需要 Bark 里开「时效性通知」）；group 让同一类消息归在一起；
     // url 是点开通知后跳到的页面（这里是家长后台）；isArchive 让它进历史记录，回头能翻。
@@ -55,6 +55,10 @@ function buildPayload(
   return { title, content };
 }
 
+function isBark(url: string): boolean {
+  return url.includes("bark") || url.includes("day.app");
+}
+
 async function post(
   url: string,
   title: string,
@@ -63,13 +67,25 @@ async function post(
 ): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const payload = buildPayload(url, title, content, opts) as Record<string, unknown>;
+  // Bark 的 POST /:key 只认表单参数（application/x-www-form-urlencoded），
+  // 发 JSON 会被收下但字段全是空的——手机上就只剩一个没有标题没有内容的通知。
+  // 其它服务还是 JSON。
+  const init: RequestInit = isBark(url)
+    ? {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams(
+          Object.entries(payload).map(([k, v]) => [k, String(v)])
+        ).toString(),
+      }
+    : {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      };
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPayload(url, title, content, opts)),
-      signal: controller.signal,
-    });
+    const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
       console.warn(`[notify] 推送返回 ${res.status}：${url.slice(0, 60)}`);
     }
