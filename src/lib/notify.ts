@@ -59,6 +59,28 @@ function isBark(url: string): boolean {
   return url.includes("bark") || url.includes("day.app");
 }
 
+/**
+ * Bark 的推送接口：POST {服务器}/push，JSON 里带 device_key（官方文档的写法）。
+ *
+ * 家长在设置页填的是 https://api.day.app/{key}（或只填 key）。把 key 从路径里拆出来，
+ * 再发到 /push。自建的 Bark 服务器也是同一个接口，所以域名原样保留。
+ *
+ * 之前直接 POST 到 /{key}：用 JSON 时字段被丢（通知是空的），改成表单又没法确认。
+ * 官方示例是 /push + JSON，就按这个来。
+ */
+export function barkPushTarget(url: string): { endpoint: string; deviceKey: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const key = segments[0];
+  if (segments.length !== 1 || !key || key === "push") return null;
+  return { endpoint: `${parsed.origin}/push`, deviceKey: key };
+}
+
 async function post(
   url: string,
   title: string,
@@ -68,26 +90,20 @@ async function post(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const payload = buildPayload(url, title, content, opts) as Record<string, unknown>;
-  // Bark 的 POST /:key 只认表单参数（application/x-www-form-urlencoded），
-  // 发 JSON 会被收下但字段全是空的——手机上就只剩一个没有标题没有内容的通知。
-  // 其它服务还是 JSON。
-  const init: RequestInit = isBark(url)
-    ? {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams(
-          Object.entries(payload).map(([k, v]) => [k, String(v)])
-        ).toString(),
-      }
-    : {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      };
+
+  // Bark 走 /push + JSON（device_key 放在 body 里）；其它服务按原样 POST JSON。
+  const target = isBark(url) ? barkPushTarget(url) : null;
+  const endpoint = target?.endpoint ?? url;
+  const body = target ? { device_key: target.deviceKey, ...payload } : payload;
+  const init: RequestInit = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
+    const res = await fetch(endpoint, { ...init, signal: controller.signal });
     if (!res.ok) {
-      console.warn(`[notify] 推送返回 ${res.status}：${url.slice(0, 60)}`);
+      console.warn(`[notify] 推送返回 ${res.status}：${endpoint.slice(0, 60)}`);
     }
   } finally {
     clearTimeout(timer);
