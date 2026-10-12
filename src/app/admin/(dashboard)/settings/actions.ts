@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { requireParentSession } from "@/lib/auth";
 import { effectiveUserId } from "@/lib/child";
 import { prisma } from "@/lib/db";
-import { sendTestNotification } from "@/lib/notify";
+import { normalizePushUrl, sendTestNotification } from "@/lib/notify";
 
 /** 简单校验：必须是 http(s) 的绝对地址，挡住填个手机号之类的低级错误。 */
 function parseWebhookUrl(raw: string): { ok: true; url: string | null } | { ok: false; error: string } {
-  const trimmed = raw.trim();
+  const trimmed = normalizePushUrl(raw);
   if (!trimmed) return { ok: true, url: null }; // 清空 = 关闭推送
   try {
     const parsed = new URL(trimmed);

@@ -19,7 +19,12 @@ const TIMEOUT_MS = 4000;
  * 覆盖国内常用的几个；认不出来的就发通用的 {title, content}，
  * 大部分自建/第三方 webhook 都能接。
  */
-function buildPayload(url: string, title: string, content: string): unknown {
+function buildPayload(
+  url: string,
+  title: string,
+  content: string,
+  opts?: { url?: string }
+): unknown {
   if (url.includes("qyapi.weixin.qq.com")) {
     // 企业微信群机器人
     return { msgtype: "text", text: { content: `${title}\n${content}` } };
@@ -35,19 +40,34 @@ function buildPayload(url: string, title: string, content: string): unknown {
     return { text: title, desp: content, type: "text" };
   }
   if (url.includes("bark") || url.includes("day.app")) {
-    return { title, body: content };
+    // Bark 的字段：level 决定能不能穿透专注模式（timeSensitive 会在锁屏上亮、有声音，
+    // 需要 Bark 里开「时效性通知」）；group 让同一类消息归在一起；
+    // url 是点开通知后跳到的页面（这里是家长后台）；isArchive 让它进历史记录，回头能翻。
+    return {
+      title,
+      body: content,
+      level: "timeSensitive",
+      group: "打卡小星星",
+      isArchive: 1,
+      ...(opts?.url ? { url: opts.url } : {}),
+    };
   }
   return { title, content };
 }
 
-async function post(url: string, title: string, content: string): Promise<void> {
+async function post(
+  url: string,
+  title: string,
+  content: string,
+  opts?: { url?: string }
+): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPayload(url, title, content)),
+      body: JSON.stringify(buildPayload(url, title, content, opts)),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -64,7 +84,12 @@ async function post(url: string, title: string, content: string): Promise<void> 
  * 从 childId 反查到 User：通知是发给"这个孩子的家长"的，多租户下必须顺着归属链走，
  * 不能用什么全局配置。
  */
-export async function notifyParent(childId: string, title: string, content: string) {
+export async function notifyParent(
+  childId: string,
+  title: string,
+  content: string,
+  opts?: { url?: string }
+) {
   try {
     const child = await prisma.child.findUnique({
       where: { id: childId },
@@ -73,7 +98,7 @@ export async function notifyParent(childId: string, title: string, content: stri
     const url = child?.user?.notifyWebhookUrl?.trim();
     if (!url) return;
 
-    await post(url, title, content);
+    await post(url, title, content, opts);
   } catch (error) {
     // 吞掉所有异常：孩子的打卡不能因为家长的推送配置有问题而失败
     console.warn("[notify] 推送失败：", error instanceof Error ? error.message : error);
@@ -83,4 +108,17 @@ export async function notifyParent(childId: string, title: string, content: stri
 /** 家长在设置页点"发送测试通知"用。这个要把错误抛出来——不然填错了也没反馈。 */
 export async function sendTestNotification(url: string) {
   await post(url, "打卡小星星 · 测试通知", "能看到这条就说明配置成功了 🎉");
+}
+
+/**
+ * 把家长填的地址整理成能用的形式。主要为 Bark 服务：家长通常只会复制一个 key，
+ * 或者 https://api.day.app/key，两种都接受，统一成 https://api.day.app/key。
+ *
+ * 只认 Bark 的 key 形状（纯字母数字，长度够长）。Server酱 / 企业微信 / PushPlus 的地址
+ * 都带域名和路径，不会被误认成 key。
+ */
+export function normalizePushUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^[A-Za-z0-9_-]{12,}$/.test(trimmed)) return `https://api.day.app/${trimmed}`;
+  return trimmed;
 }

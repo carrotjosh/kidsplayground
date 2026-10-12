@@ -6,6 +6,7 @@ import { TaskStatus } from "@/generated/prisma/client";
 import { requireChildBySlug } from "@/lib/child";
 import { prisma } from "@/lib/db";
 import { notifyParent } from "@/lib/notify";
+import { requestOrigin } from "@/lib/origin";
 import { redeemReward } from "@/lib/rewards";
 import { submitDailyTaskForReview } from "@/lib/tasks";
 
@@ -26,7 +27,8 @@ export async function submitTaskAction(slug: string, taskId: string) {
   await notifyParent(
     child.id,
     `${child.name} 提交了打卡`,
-    `${task.emoji ?? "⭐"} ${task.title}（${task.points} 阳光）\n当前共 ${pending} 项待审核`
+    `${task.emoji ?? "⭐"} ${task.title}（${task.points} 阳光）\n当前共 ${pending} 项待审核`,
+    { url: `${await requestOrigin()}/admin` }
   );
 
   revalidatePath(`/kid/${slug}`);
@@ -40,7 +42,8 @@ export async function redeemRewardAction(slug: string, rewardId: string) {
   await notifyParent(
     child.id,
     `${child.name} 想兑换礼物`,
-    `🎁 ${redemption.rewardTitle}（花了 ${redemption.cost} 阳光）\n记得线下兑现，然后去后台标记已发放`
+    `🎁 ${redemption.rewardTitle}（花了 ${redemption.cost} 阳光）\n记得线下兑现，然后去后台标记已发放`,
+    { url: `${await requestOrigin()}/admin` }
   );
 
   revalidatePath(`/kid/${slug}/rewards`);
