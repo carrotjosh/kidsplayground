@@ -14,8 +14,8 @@ export function WebhookForm({ current }: { current: string | null }) {
     <div className="pixel-card flex flex-col gap-3 bg-white p-5">
       <h2 className="font-semibold">待办通知</h2>
       <p className="text-sm text-slate-500">
-        孩子提交打卡、申请兑换礼物时，往这个地址推一条消息，你在微信里就能看到，不用一直盯着后台。
-        留空就是关闭。
+        孩子提交打卡、申请兑换礼物时，手机上会弹一条通知，点开直接进后台。
+        推荐用 <b>Bark</b>（iPhone，App Store 免费）。留空就是关闭。
       </p>
 
       <input
@@ -23,7 +23,7 @@ export function WebhookForm({ current }: { current: string | null }) {
         form="webhook-save"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://sctapi.ftqq.com/你的KEY.send"
+        placeholder="粘贴 Bark 的 key，或 https://api.day.app/你的key"
         className="w-full rounded-none border-2 border-nes-black px-3 py-2"
       />
 
@@ -62,14 +62,20 @@ export function WebhookForm({ current }: { current: string | null }) {
         <summary className="cursor-pointer">怎么拿到这个地址？</summary>
         <div className="mt-2 flex flex-col gap-1">
           <p>
-            <b>Server 酱</b>（最省事，微信里收）：去 sct.ftqq.com 用微信扫码登录，拿到 SendKey，
-            地址就是 <code>https://sctapi.ftqq.com/你的KEY.send</code>
+            <b>Bark</b>（推荐）：iPhone 上装 Bark，打开后首页能看到一串 key，把
+            <code>https://api.day.app/这串key</code> 整条粘进来就行（只粘 key 也可以）。
+            第一次用要在 Bark 的设置里允许通知；想让它在专注模式下也亮屏，打开「时效性通知」。
+          </p>
+          <p>
+            <b>Server 酱</b>（微信）：去 sct.ftqq.com 扫码拿 SendKey，地址是
+            <code>https://sctapi.ftqq.com/你的KEY.send</code>。
+            实测推送经常是静音、折叠在服务通知里，所以不太显眼。
           </p>
           <p>
             <b>企业微信群机器人</b>：在群里添加机器人，复制它的 Webhook 地址，整条粘进来。
           </p>
           <p className="text-slate-400">
-            也支持 PushPlus、PushDeer、Bark；其它服务会以 {"{title, content}"} 的 JSON 发送。
+            也支持 PushPlus、PushDeer；其它服务会以 {"{title, content}"} 的 JSON 发送。
           </p>
         </div>
       </details>
