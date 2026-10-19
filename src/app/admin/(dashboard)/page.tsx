@@ -1,10 +1,12 @@
 import Link from "next/link";
 
+import { CategoryPanel } from "@/components/CategoryPanel";
 import { DisciplinePanel } from "@/components/DisciplinePanel";
 import { MonthStatsPanel, MonthTrend } from "@/components/MonthStatsPanel";
 import { RedemptionStatus, TaskStatus } from "@/generated/prisma/client";
 import { getMonthStats, getRecentMonthsStats } from "@/lib/analytics";
 import { settleMonthlyBonusForChild } from "@/lib/calendar";
+import { getCategoryStats } from "@/lib/categoryStats";
 import { getPrimaryChild } from "@/lib/child";
 import { currentMonthString, formatStoredDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
@@ -22,8 +24,17 @@ export default async function AdminDashboardPage() {
   // 顺手结算月度满勤奖（幂等，重复调用不会重复发）。
   await settleMonthlyBonusForChild(child);
 
-  const [tasks, balance, pendingRedemptions, pendingReviewTasks, stats, trend, discipline, earned] =
-    await Promise.all([
+  const [
+    tasks,
+    balance,
+    pendingRedemptions,
+    pendingReviewTasks,
+    stats,
+    trend,
+    discipline,
+    earned,
+    categories,
+  ] = await Promise.all([
       getOrCreateTodayTasks(child.id),
       getPointsBalance(child.id),
       prisma.redemption.count({
@@ -37,6 +48,7 @@ export default async function AdminDashboardPage() {
       getRecentMonthsStats(child.id, 6),
       getDisciplineStats(child.id, child.dailyGoalPoints),
       totalEarned(child.id),
+      getCategoryStats(child.id),
     ]);
   const progress = levelProgress(child.level, earned);
   const themeMeta = THEME_META[child.theme];
@@ -116,6 +128,7 @@ export default async function AdminDashboardPage() {
       {/* 数据分析：本月达标率 + 阳光收支构成，再加最近半年的趋势。
           日历本身在"打卡记录"页，这里只放看趋势用的统计。 */}
       <DisciplinePanel stats={discipline} />
+      <CategoryPanel stats={categories} />
       <MonthStatsPanel stats={stats} />
       <MonthTrend months={trend} />
 

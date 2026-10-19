@@ -28,6 +28,7 @@ export default async function TemplatesPage() {
                 id: template.id,
                 title: template.title,
                 subject: template.subject ?? template.title,
+                category: template.category,
                 amount: template.amount,
                 unit: template.unit,
                 points: template.points,

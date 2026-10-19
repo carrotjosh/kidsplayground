@@ -1,4 +1,4 @@
-import { LedgerType, ScheduleType, TaskSource, TaskStatus } from "@/generated/prisma/client";
+import { LedgerType, ScheduleType, TaskSource, TaskStatus, type TaskCategory } from "@/generated/prisma/client";
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { restoreFledIfRecovered } from "@/lib/flee";
@@ -65,6 +65,7 @@ export async function ensureDailyTasksForDate(db: Db, childId: string, dateStrin
         date,
         title: template.title,
         subject: template.subject,
+        category: template.category,
         amount: template.amount,
         unit: template.unit,
         emoji: template.emoji,
@@ -113,6 +114,7 @@ export async function getOrCreateTodayTasks(childId: string) {
       date,
       title: template.title,
       subject: template.subject,
+      category: template.category,
       amount: template.amount,
       unit: template.unit,
       emoji: template.emoji,
@@ -134,6 +136,7 @@ export async function createAdhocTask(params: {
   date: Date;
   title: string;
   subject?: string | null;
+  category?: TaskCategory | null;
   amount?: number | null;
   unit?: string | null;
   emoji?: string | null;
@@ -145,6 +148,7 @@ export async function createAdhocTask(params: {
       date: params.date,
       title: params.title,
       subject: params.subject ?? null,
+      category: params.category ?? null,
       amount: params.amount ?? null,
       unit: params.unit ?? null,
       emoji: params.emoji ?? null,
