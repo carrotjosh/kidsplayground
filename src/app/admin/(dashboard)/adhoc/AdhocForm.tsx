@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
+import { CategoryPicker } from "@/components/CategoryPicker";
 import { EmojiPicker, TASK_EMOJI_GROUPS } from "@/components/EmojiPicker";
 
 import { createAdhocAction } from "./actions";
 
 export function AdhocForm({ defaultDate }: { defaultDate: string }) {
   const [error, formAction, isPending] = useActionState(createAdhocAction, null);
+  const [subject, setSubject] = useState("");
 
   return (
     <form action={formAction} className="flex flex-col gap-3 pixel-card bg-white p-5">
@@ -20,6 +22,8 @@ export function AdhocForm({ defaultDate }: { defaultDate: string }) {
             name="subject"
             placeholder="默写生字"
             required
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
             className="w-40 rounded-none border-2 border-nes-black px-3 py-2"
           />
         </label>
@@ -63,6 +67,8 @@ export function AdhocForm({ defaultDate }: { defaultDate: string }) {
           />
         </label>
       </div>
+
+      <CategoryPicker subject={subject} />
 
       <EmojiPicker name="emoji" groups={TASK_EMOJI_GROUPS} />
 

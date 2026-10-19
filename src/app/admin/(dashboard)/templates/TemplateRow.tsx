@@ -3,6 +3,8 @@
 import { useActionState, useRef, useState } from "react";
 
 import { deleteTemplateAction, toggleTemplateActiveAction, updateTemplateAction } from "./actions";
+import { CATEGORY_META } from "@/lib/taskCategory";
+
 import { TemplateFields, type TemplateFieldValues } from "./TemplateFields";
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -69,6 +71,13 @@ export function TemplateRow({
       <div className="min-w-0">
         <p className="font-semibold">
           {template.emoji} {template.title}（{template.points} 阳光）
+          {template.category ? (
+            <span className="ml-2 border border-slate-300 px-1.5 text-xs font-normal text-slate-500">
+              {CATEGORY_META[template.category as keyof typeof CATEGORY_META].label}
+            </span>
+          ) : (
+            <span className="ml-2 text-xs font-normal text-nes-red">未分类</span>
+          )}
           {!template.active && <span className="ml-2 text-xs text-slate-400">已停用</span>}
         </p>
         <p className="text-sm text-slate-500">

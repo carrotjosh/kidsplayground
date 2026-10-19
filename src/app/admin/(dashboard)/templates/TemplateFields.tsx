@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { CategoryPicker } from "@/components/CategoryPicker";
 import { EmojiPicker, TASK_EMOJI_GROUPS } from "@/components/EmojiPicker";
 
 const WEEKDAYS = [
@@ -32,6 +33,7 @@ const SCHEDULE_OPTIONS = [
 
 export type TemplateFieldValues = {
   subject: string;
+  category: string | null;
   amount: number | null;
   unit: string | null;
   points: number;
@@ -46,6 +48,8 @@ export type TemplateFieldValues = {
  */
 export function TemplateFields({ initial }: { initial?: TemplateFieldValues }) {
   const [scheduleType, setScheduleType] = useState(initial?.scheduleType ?? "WEEKDAYS");
+  // 主题受控，分类选择器要根据它猜默认分类
+  const [subject, setSubject] = useState(initial?.subject ?? "");
 
   return (
     <>
@@ -56,7 +60,8 @@ export function TemplateFields({ initial }: { initial?: TemplateFieldValues }) {
             name="subject"
             placeholder="读书"
             required
-            defaultValue={initial?.subject ?? ""}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
             className="w-40 rounded-none border-2 border-nes-black px-3 py-2"
           />
         </label>
@@ -103,6 +108,8 @@ export function TemplateFields({ initial }: { initial?: TemplateFieldValues }) {
           </span>
         </label>
       </div>
+
+      <CategoryPicker subject={subject} defaultValue={initial?.category} />
 
       <EmojiPicker name="emoji" groups={TASK_EMOJI_GROUPS} defaultValue={initial?.emoji ?? ""} />
 

@@ -7,6 +7,7 @@ import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { todayAsUtcDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
+import { parseCategory } from "@/lib/taskCategory";
 import { parseTaskFields } from "@/lib/taskName";
 
 function parseWeekdays(formData: FormData): number[] {
@@ -29,6 +30,8 @@ export async function createTemplateAction(
 
   const parsed = parseTaskFields(formData);
   if (!parsed.ok) return parsed.error;
+  const cat = parseCategory(formData);
+  if (!cat.ok) return cat.error;
 
   const emoji = String(formData.get("emoji") ?? "").trim() || null;
   const points = Number(formData.get("points"));
@@ -47,6 +50,7 @@ export async function createTemplateAction(
       childId: child.id,
       title: parsed.title,
       subject: parsed.subject,
+      category: cat.category,
       amount: parsed.amount,
       unit: parsed.unit,
       emoji,
@@ -74,6 +78,8 @@ export async function updateTemplateAction(
 
   const parsed = parseTaskFields(formData);
   if (!parsed.ok) return parsed.error;
+  const cat = parseCategory(formData);
+  if (!cat.ok) return cat.error;
 
   const emoji = String(formData.get("emoji") ?? "").trim() || null;
   const points = Number(formData.get("points"));
@@ -101,7 +107,7 @@ export async function updateTemplateAction(
   await prisma.$transaction([
     prisma.taskTemplate.update({
       where: { id: templateId },
-      data: { ...shared, scheduleType, weekdays },
+      data: { ...shared, category: cat.category, scheduleType, weekdays },
     }),
     prisma.dailyTask.updateMany({
       where: {
@@ -111,6 +117,13 @@ export async function updateTemplateAction(
         status: TaskStatus.PENDING,
       },
       data: shared,
+    }),
+    // 分类不一样：**这个模板生成过的所有任务**都跟着改，不分日期和状态。
+    // 分类不牵涉阳光，只是统计用的标签——家长把「练字」从学习改成才艺，
+    // 就是想让「孩子更爱做哪类任务」按新口径重算，而不是只对以后生效。
+    prisma.dailyTask.updateMany({
+      where: { childId: child.id, templateId },
+      data: { category: cat.category },
     }),
   ]);
 

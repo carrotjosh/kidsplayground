@@ -6,6 +6,7 @@ import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { dateStringToUtcDate, todayDateString } from "@/lib/date";
 import { createAdhocTask } from "@/lib/tasks";
+import { parseCategory } from "@/lib/taskCategory";
 import { parseTaskFields } from "@/lib/taskName";
 
 export async function createAdhocAction(
@@ -16,6 +17,8 @@ export async function createAdhocAction(
 
   const parsed = parseTaskFields(formData);
   if (!parsed.ok) return parsed.error;
+  const cat = parseCategory(formData);
+  if (!cat.ok) return cat.error;
 
   const emoji = String(formData.get("emoji") ?? "").trim() || null;
   const points = Number(formData.get("points"));
@@ -30,6 +33,7 @@ export async function createAdhocAction(
     date: dateStringToUtcDate(dateString),
     title: parsed.title,
     subject: parsed.subject,
+    category: cat.category,
     amount: parsed.amount,
     unit: parsed.unit,
     emoji,

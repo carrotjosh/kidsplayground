@@ -16,7 +16,8 @@ import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
-import { approveDailyTask, submitDailyTaskForReview } from "../src/lib/tasks";
+import { approveDailyTask, ensureDailyTasksForDate, submitDailyTaskForReview } from "../src/lib/tasks";
+import { getCategoryStats } from "../src/lib/categoryStats";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
@@ -442,6 +443,72 @@ async function main() {
       });
       await prisma.caught.deleteMany({ where: { childId: child.id } });
       await prisma.dailyEncounter.deleteMany({ where: { childId: child.id } });
+    }
+
+    // ---------- 任务分类 ----------
+    //
+    // 盯三件事：生成任务时分类有没有快照过去（漏了的话面板全是「未分类」）、
+    // 改模板分类会不会把历史一起改（这是分类和其它快照字段刻意不同的地方）、
+    // 统计是按完成率排而不是按完成数排。
+    console.log("\n【分类】任务带分类，统计按完成率排");
+    {
+      const tpls = await prisma.taskTemplate.findMany({ where: { childId: child.id } });
+      // 只看默认铺的三个——前面校准那段自己加过一个不带分类的「练琴」
+      const defaults = tpls.filter((t) => ["读书", "口算", "跳绳"].includes(t.subject ?? ""));
+      expect(
+        "默认模板都有分类",
+        defaults.length === 3 && defaults.every((t) => t.category !== null),
+        true
+      );
+      const day = addDays(today, -3);
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await ensureDailyTasksForDate(prisma, child.id, day);
+      const generated = await prisma.dailyTask.findMany({ where: { childId: child.id } });
+      expect(
+        "生成的任务把分类快照过去",
+        generated.length > 0 && generated.every((t) => {
+          const tpl = tpls.find((x) => x.id === t.templateId);
+          return tpl && t.category === tpl.category;
+        }),
+        true
+      );
+
+      // 学习：排 10 完成 3（30%）；运动：排 2 完成 2（100%，但样本不够不参与结论）；
+      // 阅读：排 6 完成 5（83%）。按完成数学习的 3 < 阅读的 5，按完成率阅读也在前。
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      const mk = (category: "STUDY" | "SPORT" | "READING", n: number, done: number) =>
+        prisma.dailyTask.createMany({
+          data: Array.from({ length: n }, (_, i) => ({
+            childId: child.id,
+            date: dateStringToUtcDate(addDays(today, -1 - i)),
+            title: `自检-${category}-${i}`,
+            points: 2,
+            source: "ADHOC" as const,
+            category,
+            status: i < done ? ("DONE" as const) : ("PENDING" as const),
+          })),
+        });
+      await mk("STUDY", 10, 3);
+      await mk("SPORT", 2, 2);
+      await mk("READING", 6, 5);
+      const cs = await getCategoryStats(child.id);
+      expect("按完成率排序", cs.rows.map((r) => r.category), ["SPORT", "READING", "STUDY"]);
+      expect(
+        "样本不够的分类不当冠军",
+        cs.verdict.includes("「阅读」") && cs.verdict.includes("「学习」") && !cs.verdict.includes("「运动」"),
+        true
+      );
+      // 今天的任务不算（还没过完）
+      await prisma.dailyTask.create({
+        data: { childId: child.id, date: dateStringToUtcDate(today), title: "今天的", points: 2,
+                source: "ADHOC", category: "CHORE", status: "PENDING" },
+      });
+      expect(
+        "今天的任务不进统计",
+        (await getCategoryStats(child.id)).rows.some((r) => r.category === "CHORE"),
+        false
+      );
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
     }
 
     // ---------- 自动审批 ----------

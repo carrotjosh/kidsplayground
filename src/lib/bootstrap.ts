@@ -19,9 +19,9 @@ import { prisma } from "@/lib/db";
  * 不至于漏一项就前功尽弃。
  */
 const DEFAULT_TEMPLATES = [
-  { title: "读书20分钟", subject: "读书", amount: 20, unit: "分钟", emoji: "📖", points: 10, weekdays: [1, 2, 3, 4, 5, 6, 0] },
-  { title: "口算10题", subject: "口算", amount: 10, unit: "题", emoji: "🧮", points: 10, weekdays: [1, 2, 3, 4, 5, 6, 0] },
-  { title: "跳绳200个", subject: "跳绳", amount: 200, unit: "个", emoji: "🤸", points: 5, weekdays: [1, 2, 3, 4, 5, 6, 0] },
+  { title: "读书20分钟", subject: "读书", category: "READING" as const, amount: 20, unit: "分钟", emoji: "📖", points: 10, weekdays: [1, 2, 3, 4, 5, 6, 0] },
+  { title: "口算10题", subject: "口算", category: "STUDY" as const, amount: 10, unit: "题", emoji: "🧮", points: 10, weekdays: [1, 2, 3, 4, 5, 6, 0] },
+  { title: "跳绳200个", subject: "跳绳", category: "SPORT" as const, amount: 200, unit: "个", emoji: "🤸", points: 5, weekdays: [1, 2, 3, 4, 5, 6, 0] },
 ];
 
 /** 默认每日达标线：25 分里拿到 20 就算达标（可以漏掉最小的那项）。 */

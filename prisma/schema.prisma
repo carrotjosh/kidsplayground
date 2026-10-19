@@ -145,6 +145,17 @@ enum KidTheme {
   POKEDEX // 宝可梦：买精灵球抓宝可梦、当天挣得不到 5 阳光就有宝可梦离家出走
 }
 
+// 任务分类。固定几类而不是自由填写，因为它是拿来统计的（见 lib/taskCategory.ts）。
+enum TaskCategory {
+  STUDY // 学习
+  READING // 阅读
+  SPORT // 运动
+  CHORE // 家务
+  HABIT // 生活习惯
+  ART // 才艺
+  OTHER // 其他
+}
+
 enum TaskSource {
   TEMPLATE
   ADHOC
@@ -197,6 +208,8 @@ model TaskTemplate {
   // 孩子端卡片则分别渲染下面三个字段，主题一行、数值+单位一行，不会挤成一团。
   title     String
   subject   String? // 主题，比如"读书"
+  // 分类（学习 / 阅读 / 运动……），给家长看「孩子更爱做哪类任务」用。见 lib/taskCategory.ts。
+  category  TaskCategory?
   amount    Int? // 数值，比如 20
   unit      String? // 单位，比如"分钟"
   emoji     String?
@@ -222,6 +235,9 @@ model DailyTask {
   // 同 TaskTemplate：title 是拼好的完整名字，subject/amount/unit 供孩子端分行展示。
   title       String
   subject     String?
+  // 分类的快照。**和其它字段不同，家长改模板分类时会把历史任务一起改**：
+  // 分类不牵涉阳光，它只是给统计用的标签，家长改它就是想让统计按新的口径算。
+  category    TaskCategory?
   amount      Int?
   unit        String?
   emoji       String?
