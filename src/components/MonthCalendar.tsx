@@ -144,7 +144,10 @@ export function MonthCalendar({
 
             // 底色：先看打卡结果，没结果的日子再退回按"日子类型"上底色，
             // 这样休息日一眼能看出来，不会和"该打卡却没打"混淆。
-            const tone = day.isFuture
+            // 请假日排在最前：生病那天一项没做也不该显示成黄色的「没达标」
+            const tone = day.excusedReason
+              ? "border-sky-300 bg-sky-100 text-sky-700"
+              : day.isFuture
               ? isRestDay
                 ? restTone
                 : "border-slate-200 bg-white text-slate-300"
@@ -158,6 +161,7 @@ export function MonthCalendar({
 
             const title = [
               day.date,
+              day.excusedReason ? `（请假：${day.excusedReason}）` : "",
               day.holidayName ? `（${day.holidayName}）` : "",
               day.dayType === "WORKDAY" ? "· 工作日" : day.dayType === "WEEKEND" ? "· 周末" : "",
               day.hasTasks
@@ -192,6 +196,12 @@ export function MonthCalendar({
                     }`}
                   >
                     休
+                  </span>
+                )}
+                {/* 请假日左上角标「假」，不只靠颜色区分 */}
+                {day.excusedReason && (
+                  <span className="absolute left-0.5 top-0 text-[9px] font-bold leading-tight text-sky-700 lg:text-xs">
+                    假
                   </span>
                 )}
                 {day.isMakeupWorkday && (
@@ -266,6 +276,9 @@ export function MonthCalendar({
           <b className="text-nes-red">休</b> = 休息 · <b>学</b> = 调休上学
         </span>
         <span>📕 抓到了宝可梦</span>
+        <span>
+          <b className="text-sky-700">假</b> = 请假（不算没打卡）
+        </span>
       </div>
     </div>
   );

@@ -24,6 +24,7 @@ import type { Annotated } from "@/components/Ruby";
 import { ActionError } from "@/lib/errors";
 import { annotate } from "@/lib/pinyin";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
+import { getExcusedDates } from "@/lib/excused";
 import { FLEE_EARN_THRESHOLD } from "@/lib/flee";
 
 /**
@@ -695,7 +696,18 @@ export async function settlePokedexForChild(childId: string): Promise<PokedexEve
     const events: PokedexEvent[] = [];
     let lastSettled: string | null = null;
 
+    // 请假日（生病、出门）一次查完：这些天直接放过，游标照常往前走
+    const excused = await getExcusedDates(tx, childId, cursor, todayStr);
+
     while (cursor < todayStr) {
+      // 请假日要在「有待审核就先等」之前判断：不然生病那天孩子点过一项没批，
+      // 整个结算会卡在这一天，后面的日子都判不下去。
+      if (excused.has(cursor)) {
+        lastSettled = cursor;
+        cursor = addDays(cursor, 1);
+        continue;
+      }
+
       await ensureDailyTasksForDate(tx, childId, cursor);
 
       const dayTasks = await tx.dailyTask.findMany({

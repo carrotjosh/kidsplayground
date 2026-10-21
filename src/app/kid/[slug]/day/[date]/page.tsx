@@ -57,6 +57,11 @@ export default async function KidDayPage({
           <span className="kid-title text-amber-600">{detail.earned}</span> ☀️
         </p>
         <div className="flex flex-wrap items-center gap-2">
+          {detail.excusedReason && (
+            <span className="pixel-border kid-text bg-sky-100 px-3 py-1 kid-label text-sky-700">
+              🩹 <Pinyin text={`这天请假了：${detail.excusedReason}`} />
+            </span>
+          )}
           {detail.holidayName && (
             <span className="pixel-border kid-text bg-rose-100 px-3 py-1 kid-label text-rose-500">
               <Pinyin text={detail.holidayName} />
@@ -132,7 +137,7 @@ export default async function KidDayPage({
           </div>
         )}
 
-        {!detail.isToday && detail.tasks.some((t) => t.status !== TaskStatus.DONE) && (
+        {!detail.isToday && !detail.excusedReason && detail.tasks.some((t) => t.status !== TaskStatus.DONE) && (
           <p className="kid-text kid-label text-white pixel-text-outline">
             <Pinyin text="过去的任务不能再补做啦，要补分请找爸爸妈妈" />
           </p>

@@ -20,6 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const [
     taskTemplates,
     dailyTasks,
+    excusedDays,
     pointsLedger,
     rewards,
     redemptions,
@@ -29,6 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   ] = await Promise.all([
     prisma.taskTemplate.findMany({ where: { childId } }),
     prisma.dailyTask.findMany({ where: { childId } }),
+    prisma.excusedDay.findMany({ where: { childId } }),
     prisma.pointsLedger.findMany({ where: { childId } }),
     prisma.reward.findMany({ where: { childId } }),
     prisma.redemption.findMany({ where: { childId } }),
@@ -42,6 +44,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     child,
     taskTemplates,
     dailyTasks,
+    excusedDays,
     pointsLedger,
     rewards,
     redemptions,

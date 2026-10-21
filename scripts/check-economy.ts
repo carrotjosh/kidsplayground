@@ -18,8 +18,11 @@ import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
 import { approveDailyTask, ensureDailyTasksForDate, submitDailyTaskForReview } from "../src/lib/tasks";
 import { getCategoryStats } from "../src/lib/categoryStats";
+import { excuseDay, unexcuseDay } from "../src/lib/excused";
+import { getDisciplineStats } from "../src/lib/discipline";
+import { getMonthSummary } from "../src/lib/calendar";
 import { purgeTestTenants } from "../src/lib/testTenant";
-import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
+import { addDays, addMonths, dateStringToUtcDate, formatStoredDate, todayDateString } from "../src/lib/date";
 import {
   AMOUNT_MULTIPLIERS,
   economyRate,
@@ -95,6 +98,7 @@ async function destroyTenant(childId: string, userId: string) {
     prisma.dailyEncounter.deleteMany({ where: { childId } }),
     prisma.ballType.deleteMany({ where: { childId } }),
     prisma.redemption.deleteMany({ where: { childId } }),
+    prisma.excusedDay.deleteMany({ where: { childId } }),
     prisma.dailyTask.deleteMany({ where: { childId } }),
     prisma.reward.deleteMany({ where: { childId } }),
     prisma.taskTemplate.deleteMany({ where: { childId } }),
@@ -686,6 +690,108 @@ async function main() {
       await prisma.taskTemplate.deleteMany({ where: { childId: child.id } });
       if (savedTemplates.length) await prisma.taskTemplate.createMany({ data: savedTemplates });
       if (savedTasks.length) await prisma.dailyTask.createMany({ data: savedTasks });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
+    }
+
+    // ---------- 请假日 ----------
+    //
+    // 场景就是 2026-10-20 那天：孩子发烧一整天没开 App，任务一项都没生成。
+    // 请假之后必须：不跑宝可梦、游标照样走过去、不进满勤分母、不打断连续达标；
+    // 而且如果家长是第二天才标的（已经跑掉了一只），要把那只接回来。
+    console.log("\n【请假】发烧那天不跑宝可梦、不影响满勤和连续达标");
+    {
+      const sick = addDays(today, -1);
+      const mkOwned = (speciesId: number) =>
+        prisma.caught.create({
+          data: {
+            childId: child.id, speciesId, nameZh: `测试${speciesId}`, types: ["normal"], rarity: 1,
+            artUrl: "", gender: "UNKNOWN", ability: "测试", moveName: "测试", movePower: 1,
+            hp: 1, attack: 1, defense: 1, speed: 1, ballTier: "POKE", status: "OWNED",
+            caughtOnDate: dateStringToUtcDate(addDays(today, -10)),
+          },
+        });
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.excusedDay.deleteMany({ where: { childId: child.id } });
+      await mkOwned(25);
+      await prisma.child.update({
+        where: { id: child.id },
+        data: { penaltyEnabled: true, settledThrough: dateStringToUtcDate(addDays(sick, -1)) },
+      });
+
+      // 1) 先标请假再结算：一项没做也不跑，游标走过去
+      await excuseDay(child.id, sick, "发烧");
+      const ev = await settlePokedexForChild(child.id);
+      expect("请假那天挣 0 也不跑", ev.filter((e) => e.outcome === "FLED_AWAY").length, 0);
+      const cur = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
+      expect("游标照样走过请假日", cur.settledThrough && formatStoredDate(cur.settledThrough), sick);
+
+      // 2) 先跑了、第二天才想起来标：那只要回来
+      await unexcuseDay(child.id, sick);
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.child.update({
+        where: { id: child.id },
+        data: { settledThrough: dateStringToUtcDate(addDays(sick, -1)) },
+      });
+      const ev2 = await settlePokedexForChild(child.id);
+      expect("没请假时同样一天会跑一只", ev2.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+      const { restored } = await excuseDay(child.id, sick, "发烧");
+      expect("事后补标请假，跑掉的那只回来", restored.length, 1);
+      expect(
+        "图鉴里又全部在册",
+        await prisma.caught.count({ where: { childId: child.id, status: "FLED" } }),
+        0
+      );
+      expect("重复标同一天只改原因不报错", (await excuseDay(child.id, sick, "感冒")).restored.length, 0);
+
+      expect(
+        "日历格子带请假原因",
+        (await getMonthSummary(child, sick.slice(0, 7))).days.find((d) => d.date === sick)?.excusedReason,
+        "感冒"
+      );
+      await unexcuseDay(child.id, sick);
+
+      // 3) 满勤分母扣掉请假日。用**上个月**测：临时账号是今天建的，本月不计满勤。
+      //    把建档时间往前挪 90 天，上个月就是完整的、计满勤的一个月；默认模板天天生效。
+      const realCreatedAt = child.createdAt;
+      await prisma.child.update({
+        where: { id: child.id },
+        data: { createdAt: new Date(Date.now() - 90 * 86400_000) },
+      });
+      const backdated = await prisma.child.findUniqueOrThrow({ where: { id: child.id } });
+      const lastMonth = addMonths(today.slice(0, 7), -1);
+      const lmDay = `${lastMonth}-10`;
+      const before = await getMonthSummary(backdated, lastMonth);
+      await excuseDay(child.id, lmDay, "出门");
+      const after = await getMonthSummary(backdated, lastMonth);
+      expect("上个月计满勤（测试前提）", before.bonus.eligible, true);
+      expect("请假日不算该打卡的日子", before.taskDays - after.taskDays, 1);
+      await unexcuseDay(child.id, lmDay);
+      await prisma.child.update({ where: { id: child.id }, data: { createdAt: realCreatedAt } });
+
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      const goal = child.dailyGoalPoints;
+      const dayDone = (d: string) =>
+        prisma.dailyTask.create({
+          data: { childId: child.id, date: dateStringToUtcDate(d), title: "达标", points: goal,
+                  source: "ADHOC", status: "DONE" },
+        });
+      const dayMiss = (d: string) =>
+        prisma.dailyTask.create({
+          data: { childId: child.id, date: dateStringToUtcDate(d), title: "没做", points: goal,
+                  source: "ADHOC", status: "PENDING" },
+        });
+      await dayDone(addDays(today, -3));
+      await dayMiss(addDays(today, -2)); // 这一天会请假
+      await dayDone(addDays(today, -1));
+      await excuseDay(child.id, addDays(today, -2), "发烧");
+      const disc = await getDisciplineStats(child.id, goal);
+      expect("请假日不打断连续达标", disc.currentStreak, 2);
+      expect("请假日不进达标率的分母", [disc.reachedDays, disc.activeDays], [2, 2]);
+
+      await prisma.excusedDay.deleteMany({ where: { childId: child.id } });
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
       await prisma.caught.deleteMany({ where: { childId: child.id } });
       await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
     }

@@ -130,6 +130,7 @@ model Child {
 
   taskTemplates TaskTemplate[]
   dailyTasks    DailyTask[]
+  excusedDays   ExcusedDay[]
   ledgerEntries PointsLedger[]
   rewards       Reward[]
   redemptions   Redemption[]
@@ -197,6 +198,20 @@ enum LedgerType {
 enum RedemptionStatus {
   REQUESTED
   FULFILLED
+}
+
+// 请假日：孩子生病、出门这类「这天允许不打卡」的日子，家长手动标记。
+// 这一天在所有判定里都是中性的：不跑宝可梦、不算进满勤奖的分母、不打断连续达标、
+// 不进分类统计。任务本身不动——孩子那天想做几项也行，阳光照发。见 lib/excused.ts。
+model ExcusedDay {
+  id        String   @id @default(cuid())
+  childId   String
+  child     Child    @relation(fields: [childId], references: [id])
+  date      DateTime @db.Date
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@unique([childId, date])
 }
 
 // 周期性任务模板，家长维护。
