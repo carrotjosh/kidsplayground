@@ -2,6 +2,7 @@ import { LedgerType, ScheduleType, TaskStatus } from "@/generated/prisma/client"
 import { ActionError } from "@/lib/errors";
 import { prisma } from "@/lib/db";
 import { monthlyBonusPoints } from "@/lib/economy";
+import { getExcusedDates } from "@/lib/excused";
 import { getDayType, type DayType } from "@/lib/holidays";
 import { isTemplateDueOn } from "@/lib/tasks";
 import {
@@ -133,7 +134,9 @@ export type DayCell = {
   doneTasks: number;
   hasTasks: boolean;
   reachedGoal: boolean; // earned >= 每日达标线
-  caught: boolean; // 当天抓到过宝可梦（抓到就不算没做事，不会被当晚惩罚）
+  caught: boolean; // 当天抓到过宝可梦
+  /** 请假日的原因（生病、出门）；不是请假日就是 null。见 lib/excused.ts */
+  excusedReason: string | null;
   isFuture: boolean;
   dayType: DayType; // 按国家放假安排：工作日 / 普通周末 / 法定节假日
   holidayName: string | null; // 节假日名字，比如"国庆节"
@@ -174,7 +177,7 @@ export async function getMonthSummary(
   const monthEnd = dateStringToUtcDate(dates[dates.length - 1]);
   const today = todayDateString();
 
-  const [tasks, caught, bonusEntry, templates] = await Promise.all([
+  const [tasks, caught, bonusEntry, templates, excused] = await Promise.all([
     prisma.dailyTask.findMany({
       where: {
         childId,
@@ -198,6 +201,7 @@ export async function getMonthSummary(
       // **金额不再从这里算**——满勤奖按达标线走，见下面 bonusPoints。
       select: { scheduleType: true, weekdays: true },
     }),
+    getExcusedDates(prisma, childId, dates[0], dates[dates.length - 1]),
   ]);
 
   const caughtDates = new Set(
@@ -227,6 +231,7 @@ export async function getMonthSummary(
       hasTasks: cell.total > 0,
       reachedGoal: cell.earned >= child.dailyGoalPoints,
       caught: caughtDates.has(date),
+      excusedReason: excused.get(date) ?? null,
       isFuture: date > today,
       dayType,
       holidayName,
@@ -240,6 +245,8 @@ export async function getMonthSummary(
   const scheduled = eligibility.eligible
     ? scheduledTaskDates(month, templates, eligibility.countFrom, byDate.keys())
     : new Set<string>();
+  // 请假日不算该打卡的日子：生病那天不该让满勤奖变难拿
+  for (const d of excused.keys()) scheduled.delete(d);
   const taskDays = scheduled.size;
   const reachedDays = days.filter((d) => scheduled.has(d.date) && d.reachedGoal).length;
   // 今天还没过完，仍算"还有机会达标"的一天
@@ -272,6 +279,8 @@ export type DayDetail = {
   dayType: DayType;
   holidayName: string | null;
   isMakeupWorkday: boolean;
+  /** 这天是请假日的话，原因是什么 */
+  excusedReason: string | null;
   tasks: {
     id: string;
     title: string;
@@ -297,7 +306,7 @@ export async function getDayDetail(
 ): Promise<DayDetail> {
   const stored = dateStringToUtcDate(date);
 
-  const [tasks] = await Promise.all([
+  const [tasks, excused] = await Promise.all([
     prisma.dailyTask.findMany({
       where: { childId: child.id, date: stored, status: { not: TaskStatus.CANCELLED } },
       orderBy: { createdAt: "asc" },
@@ -312,6 +321,7 @@ export async function getDayDetail(
         status: true,
       },
     }),
+    getExcusedDates(prisma, child.id, date, date),
   ]);
 
   const earned = tasks
@@ -328,6 +338,7 @@ export async function getDayDetail(
     dayType,
     holidayName,
     isMakeupWorkday,
+    excusedReason: excused.get(date) ?? null,
     tasks,
   };
 }
@@ -424,6 +435,10 @@ export async function settleMonthlyBonusForChild(child: {
         continue;
       }
       const scheduled = scheduledTaskDates(cursor, templates, elig.countFrom, datesWithRows);
+      // 请假日不算该打卡的日子（和 getMonthSummary 同一条规则，页面和发奖必须对得上）
+      for (const d of (await getExcusedDates(tx, childId, dates[0], dates[dates.length - 1])).keys()) {
+        scheduled.delete(d);
+      }
       const taskDays = scheduled.size;
       // 用锁内重新读到的 locked，拿的是最新的达标线
       const reachedDays = [...scheduled].filter(

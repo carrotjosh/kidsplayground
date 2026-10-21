@@ -1,6 +1,7 @@
 import { TaskStatus, type TaskCategory } from "@/generated/prisma/client";
 import { addDays, dateStringToUtcDate, formatStoredDate, todayDateString } from "@/lib/date";
 import { prisma } from "@/lib/db";
+import { getExcusedDates } from "@/lib/excused";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/taskCategory";
 
 /**
@@ -50,14 +51,19 @@ export async function getCategoryStats(
   const from = addDays(today, -days);
   const to = addDays(today, -1);
 
-  const tasks = await prisma.dailyTask.findMany({
-    where: {
-      childId,
-      date: { gte: dateStringToUtcDate(from), lte: dateStringToUtcDate(to) },
-      status: { not: TaskStatus.CANCELLED },
-    },
-    select: { date: true, status: true, points: true, submittedAt: true, category: true },
-  });
+  const [allTasks, excused] = await Promise.all([
+    prisma.dailyTask.findMany({
+      where: {
+        childId,
+        date: { gte: dateStringToUtcDate(from), lte: dateStringToUtcDate(to) },
+        status: { not: TaskStatus.CANCELLED },
+      },
+      select: { date: true, status: true, points: true, submittedAt: true, category: true },
+    }),
+    getExcusedDates(prisma, childId, from, to),
+  ]);
+  // 请假日不进统计：发烧那天一项没做，不该让每一类的完成率都往下掉
+  const tasks = allTasks.filter((t) => !excused.has(formatStoredDate(t.date)));
 
   type Acc = { scheduled: number; done: number; self: number; earned: number };
   const acc = new Map<TaskCategory | null, Acc>();

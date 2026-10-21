@@ -25,6 +25,7 @@ export async function purgeTestTenants(mark: string): Promise<number> {
         prisma.dailyEncounter.deleteMany({ where: { childId: child.id } }),
         prisma.ballType.deleteMany({ where: { childId: child.id } }),
         prisma.redemption.deleteMany({ where: { childId: child.id } }),
+        prisma.excusedDay.deleteMany({ where: { childId: child.id } }),
         prisma.dailyTask.deleteMany({ where: { childId: child.id } }),
         prisma.reward.deleteMany({ where: { childId: child.id } }),
         prisma.taskTemplate.deleteMany({ where: { childId: child.id } }),

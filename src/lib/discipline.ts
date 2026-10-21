@@ -2,6 +2,7 @@ import { TaskStatus } from "@/generated/prisma/client";
 import { addDays, addMonths, currentMonthString, formatStoredDate, todayDateString } from "@/lib/date";
 import { dateStringToUtcDate } from "@/lib/date";
 import { prisma } from "@/lib/db";
+import { getExcusedDates } from "@/lib/excused";
 
 /**
  * 自觉性观测。
@@ -52,14 +53,17 @@ export async function getDisciplineStats(
   const trendStart = `${addMonths(currentMonthString(), -(TREND_MONTHS - 1))}-01`;
   const from = trendStart < windowStart ? trendStart : windowStart;
 
-  const tasks = await prisma.dailyTask.findMany({
-    where: {
-      childId,
-      date: { gte: dateStringToUtcDate(from), lte: dateStringToUtcDate(today) },
-      status: { not: TaskStatus.CANCELLED },
-    },
-    select: { date: true, status: true, points: true, submittedAt: true },
-  });
+  const [tasks, excused] = await Promise.all([
+    prisma.dailyTask.findMany({
+      where: {
+        childId,
+        date: { gte: dateStringToUtcDate(from), lte: dateStringToUtcDate(today) },
+        status: { not: TaskStatus.CANCELLED },
+      },
+      select: { date: true, status: true, points: true, submittedAt: true },
+    }),
+    getExcusedDates(prisma, childId, from, today),
+  ]);
 
   // 按日期汇总：那天挣了多少、有没有任务
   const earnedByDate = new Map<string, number>();
@@ -70,6 +74,8 @@ export async function getDisciplineStats(
 
   for (const task of tasks) {
     const date = formatStoredDate(task.date);
+    // 请假日整天不算：不进达标率、不打断也不延长连击、不进自觉提交率
+    if (excused.has(date)) continue;
     datesWithTasks.add(date);
     if (task.status !== TaskStatus.DONE) continue;
     earnedByDate.set(date, (earnedByDate.get(date) ?? 0) + task.points);

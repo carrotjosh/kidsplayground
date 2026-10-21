@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { ensureDailyTasksForDate } from "@/lib/tasks";
 
 import { approveAction, rejectAction, revokeAction } from "./actions";
+import { ExcuseForm } from "./ExcuseForm";
 import { MakeupDatePicker } from "./MakeupDatePicker";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,6 +94,10 @@ export default async function HistoryPage({
               {formatDateWithWeekday(day)}
               {day === today && <span className="ml-2 text-xs text-slate-400">（今天）</span>}
             </p>
+            <ExcuseForm
+              date={day}
+              currentReason={summary.days.find((d) => d.date === day)?.excusedReason ?? null}
+            />
             {dayTasks.length === 0 ? (
               <p className="text-sm text-slate-500">这天没有任何任务（也没有模板在这天生效）。</p>
             ) : (

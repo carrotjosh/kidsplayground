@@ -15,6 +15,7 @@ import "dotenv/config";
 import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { prisma } from "../src/lib/db";
+import { excuseDay, unexcuseDay } from "../src/lib/excused";
 import { purgeTestTenants } from "../src/lib/testTenant";
 import { todayAsUtcDate, todayDateString } from "../src/lib/date";
 import { ensureTodayEncounters, throwBall } from "../src/lib/pokedex";
@@ -114,6 +115,16 @@ async function main() {
   if (bTask?.status === "PENDING") pass("B 的任务仍然是 PENDING");
   else fail("B 的任务状态", `被改成了 ${bTask?.status}`);
 
+  // 请假日：A 的孩子请假，不能让 B 的孩子也算请假；B 撤销同一天也撤不掉 A 的。
+  // lib 函数按 childId 写入/删除，这里确认按孩子隔离而不是按日期。
+  const sickDay = "2099-01-15";
+  await excuseDay(A.child.id, sickDay, "发烧");
+  await unexcuseDay(B.child.id, sickDay);
+  const aExcused = await prisma.excusedDay.count({ where: { childId: A.child.id } });
+  const bExcused = await prisma.excusedDay.count({ where: { childId: B.child.id } });
+  if (aExcused === 1 && bExcused === 0) pass("A 的请假不会出现在 B 名下，B 也撤不掉");
+  else fail("请假日隔离", `A=${aExcused} 条，B=${bExcused} 条`);
+
   // 清理：先删两个孩子名下的全部数据，再删账号
   for (const t of [A, B]) {
     await prisma.$transaction([
@@ -122,6 +133,7 @@ async function main() {
       prisma.dailyEncounter.deleteMany({ where: { childId: t.child.id } }),
       prisma.ballType.deleteMany({ where: { childId: t.child.id } }),
       prisma.redemption.deleteMany({ where: { childId: t.child.id } }),
+      prisma.excusedDay.deleteMany({ where: { childId: t.child.id } }),
       prisma.dailyTask.deleteMany({ where: { childId: t.child.id } }),
       prisma.reward.deleteMany({ where: { childId: t.child.id } }),
       prisma.taskTemplate.deleteMany({ where: { childId: t.child.id } }),
