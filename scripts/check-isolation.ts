@@ -21,7 +21,12 @@ import { todayAsUtcDate, todayDateString } from "../src/lib/date";
 import { ensureTodayEncounters, throwBall } from "../src/lib/pokedex";
 import { fulfillRedemption, redeemReward } from "../src/lib/rewards";
 import { adjustPointsManually } from "../src/lib/points";
-import { approveDailyTask, createAdhocTask, revokeDailyTaskCompletion } from "../src/lib/tasks";
+import {
+  approveAllPendingReviews,
+  approveDailyTask,
+  createAdhocTask,
+  revokeDailyTaskCompletion,
+} from "../src/lib/tasks";
 
 const MARK = "[isolation-test]";
 let failures = 0;
@@ -114,6 +119,26 @@ async function main() {
   const bTask = await prisma.dailyTask.findUnique({ where: { id: B.task.id } });
   if (bTask?.status === "PENDING") pass("B 的任务仍然是 PENDING");
   else fail("B 的任务状态", `被改成了 ${bTask?.status}`);
+
+  // 一键审批：这个操作不带任务 id（就是「把我家孩子的待审核全批了」），
+  // 所以挡不住的话不是越权调用，而是 where 漏了 childId —— A 点一下会把 B 的也批掉。
+  // B 的任务此时是 PENDING_REVIEW，A 批完之后它必须还在。
+  // A 自己也造一条待审核，这样「批到 1 条 + B 没被碰」同时成立——
+  // 不然 A 名下 0 条待审核时，一个什么都不做的实现也能让这条断言通过。
+  await prisma.dailyTask.update({ where: { id: B.task.id }, data: { status: "PENDING_REVIEW" } });
+  const aOwn = await createAdhocTask({
+    childId: A.child.id, date: todayAsUtcDate(), title: "A 的待审核", points: 3,
+  });
+  await prisma.dailyTask.update({ where: { id: aOwn.id }, data: { status: "PENDING_REVIEW" } });
+
+  const batch = await approveAllPendingReviews(A.child.id);
+  const bAfter = await prisma.dailyTask.findUniqueOrThrow({ where: { id: B.task.id } });
+  if (batch.count === 1 && bAfter.status === "PENDING_REVIEW") {
+    pass("A 一键审批批到自己那 1 条，没碰 B 的");
+  } else {
+    fail("一键审批的范围", `批了 ${batch.count} 条，B 的任务现在是 ${bAfter.status}`);
+  }
+  await prisma.dailyTask.update({ where: { id: B.task.id }, data: { status: "PENDING" } });
 
   // 请假日：A 的孩子请假，不能让 B 的孩子也算请假；B 撤销同一天也撤不掉 A 的。
   // lib 函数按 childId 写入/删除，这里确认按孩子隔离而不是按日期。

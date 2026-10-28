@@ -16,6 +16,7 @@ import { THEME_META } from "@/lib/theme";
 import { getPointsBalance } from "@/lib/points";
 import { getOrCreateTodayTasks } from "@/lib/tasks";
 
+import { ApproveAllButton } from "./ApproveAllButton";
 import { approveAction, rejectAction } from "./history/actions";
 
 export default async function AdminDashboardPage() {
@@ -98,9 +99,18 @@ export default async function AdminDashboardPage() {
 
       {pendingReviewTasks.length > 0 && (
         <div className="pixel-card bg-white p-5">
-          <h2 className="mb-3 font-semibold text-amber-600">
-            待审核任务（{pendingReviewTasks.length}）
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-semibold text-amber-600">
+              待审核任务（{pendingReviewTasks.length}）
+            </h2>
+            {/* 两条以上才给一键审批：只有一条的时候下面那个「批准」就是一键 */}
+            {pendingReviewTasks.length > 1 && (
+              <ApproveAllButton
+                count={pendingReviewTasks.length}
+                points={pendingReviewTasks.reduce((sum, t) => sum + t.points, 0)}
+              />
+            )}
+          </div>
           <ul className="flex flex-col gap-2">
             {pendingReviewTasks.map((task) => (
               <li key={task.id} className="flex items-center justify-between text-sm">

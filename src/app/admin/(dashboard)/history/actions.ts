@@ -6,7 +6,12 @@ import { requireParentSession } from "@/lib/auth";
 import { getPrimaryChild } from "@/lib/child";
 import { ActionError } from "@/lib/errors";
 import { excuseDay, unexcuseDay } from "@/lib/excused";
-import { approveDailyTask, rejectDailyTaskReview, revokeDailyTaskCompletion } from "@/lib/tasks";
+import {
+  approveAllPendingReviews,
+  approveDailyTask,
+  rejectDailyTaskReview,
+  revokeDailyTaskCompletion,
+} from "@/lib/tasks";
 
 function revalidateHistoryPaths() {
   revalidatePath("/admin/history");
@@ -27,6 +32,21 @@ export async function approveAction(taskId: string) {
   const child = await getPrimaryChild();
   await approveDailyTask(taskId, child.id);
   revalidateHistoryPaths();
+}
+
+/**
+ * 一键审批：把所有待审核的打卡一次批完。只动孩子点过「做完了」的那些。
+ * 返回一句给家长看的结果，顺手把孩子端也刷掉（阳光余额变了）。
+ */
+export async function approveAllAction(): Promise<string> {
+  await requireParentSession();
+  const child = await getPrimaryChild();
+  const { count, points, restored } = await approveAllPendingReviews(child.id);
+  if (count === 0) return "没有待审核的打卡";
+  revalidateHistoryPaths();
+  revalidatePath(`/kid/${child.slug}`, "layout");
+  const back = restored.length > 0 ? `，${restored.join("、")} 回来了` : "";
+  return `✅ 批了 ${count} 项，发出 ${points} 阳光${back}`;
 }
 
 /** 打回：只能作用于待审核状态的任务。 */

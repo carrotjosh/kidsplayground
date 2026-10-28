@@ -16,7 +16,12 @@ import { hashPassword } from "../src/lib/auth";
 import { seedDefaultsForChild } from "../src/lib/bootstrap";
 import { ScheduleType } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
-import { approveDailyTask, ensureDailyTasksForDate, submitDailyTaskForReview } from "../src/lib/tasks";
+import {
+  approveAllPendingReviews,
+  approveDailyTask,
+  ensureDailyTasksForDate,
+  submitDailyTaskForReview,
+} from "../src/lib/tasks";
 import { getCategoryStats } from "../src/lib/categoryStats";
 import { excuseDay, unexcuseDay } from "../src/lib/excused";
 import { getDisciplineStats } from "../src/lib/discipline";
@@ -690,6 +695,88 @@ async function main() {
       await prisma.taskTemplate.deleteMany({ where: { childId: child.id } });
       if (savedTemplates.length) await prisma.taskTemplate.createMany({ data: savedTemplates });
       if (savedTasks.length) await prisma.dailyTask.createMany({ data: savedTasks });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
+    }
+
+    // ---------- 一键审批 ----------
+    //
+    // 两个最该出事的地方：
+    //   1. 把 PENDING（孩子没说做完）一起批掉 = 白送阳光
+    //   2. 家长手机上连点两下 = 发两份
+    console.log("\n【一键审批】只批孩子提交过的，连点两次不重复发");
+    {
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+
+      const mk = (title: string, points: number, status: "PENDING" | "PENDING_REVIEW", date: string) =>
+        prisma.dailyTask.create({
+          data: { childId: child.id, title, points, source: "ADHOC", status,
+                  date: dateStringToUtcDate(date) },
+        });
+      // 待审核横跨两天（家长忘了批）：3 + 4 = 7；另有两条孩子没点过的
+      await mk("自检-待审1", 3, "PENDING_REVIEW", addDays(today, -1));
+      await mk("自检-待审2", 4, "PENDING_REVIEW", addDays(today, -2));
+      const untouched = await mk("自检-没提交", 9, "PENDING", addDays(today, -1));
+
+      const bal = async () =>
+        (await prisma.pointsLedger.aggregate({ where: { childId: child.id }, _sum: { amount: true } }))
+          ._sum.amount ?? 0;
+      const before = await bal();
+      const r = await approveAllPendingReviews(child.id);
+      expect("批的条数", r.count, 2);
+      expect("发出的阳光 = 两条之和", r.points, 7);
+      expect("余额确实加了 7", (await bal()) - before, 7);
+      expect(
+        "没提交的那条一动不动",
+        (await prisma.dailyTask.findUniqueOrThrow({ where: { id: untouched.id } })).status,
+        "PENDING"
+      );
+      expect(
+        "每条都记了流水、且挂在对应任务上",
+        await prisma.pointsLedger.count({ where: { childId: child.id, dailyTaskId: { not: null } } }),
+        2
+      );
+
+      // 连点第二下
+      const again = await approveAllPendingReviews(child.id);
+      expect("第二次没有待审核了", again.count, 0);
+      expect("连点两次不多发", (await bal()) - before, 7);
+
+      // 横跨的那天批完够 5 了 → 跑掉的那只要回来。
+      // 昨天本来只挣 3（不到 5），跑了一只；一键审批把 4 分那条也批了，但那是前天的，
+      // 所以这里单独造一天：昨天 2 + 4 = 6。
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
+      await prisma.caught.deleteMany({ where: { childId: child.id } });
+      const yd = addDays(today, -1);
+      await prisma.child.update({
+        where: { id: child.id },
+        data: { theme: "POKEDEX", penaltyEnabled: true,
+                settledThrough: dateStringToUtcDate(addDays(yd, -1)) },
+      });
+      await prisma.caught.create({
+        data: { childId: child.id, speciesId: 25, nameZh: "皮卡丘", types: ["electric"], rarity: 1,
+                artUrl: "", gender: "UNKNOWN", ability: "测试", moveName: "测试", movePower: 1,
+                hp: 1, attack: 1, defense: 1, speed: 1, ballTier: "POKE", status: "OWNED",
+                caughtOnDate: dateStringToUtcDate(addDays(yd, -1)) },
+      });
+      await mk("自检-已完成2分", 2, "PENDING_REVIEW", yd);
+      await approveAllPendingReviews(child.id); // 只有 2 分，不到 5
+      const fledEv = await settlePokedexForChild(child.id);
+      expect("只挣 2 → 跑了一只（前提）", fledEv.filter((e) => e.outcome === "FLED_AWAY").length, 1);
+      await mk("自检-补的4分", 4, "PENDING_REVIEW", yd);
+      const back = await approveAllPendingReviews(child.id);
+      expect("一键审批补到 6 → 把跑掉的接回来", back.restored.length, 1);
+      expect(
+        "图鉴里又全部在册",
+        await prisma.caught.count({ where: { childId: child.id, status: "FLED" } }),
+        0
+      );
+
+      await prisma.dailyTask.deleteMany({ where: { childId: child.id } });
+      await prisma.pointsLedger.deleteMany({ where: { childId: child.id } });
       await prisma.caught.deleteMany({ where: { childId: child.id } });
       await prisma.child.update({ where: { id: child.id }, data: { settledThrough: null } });
     }

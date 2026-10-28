@@ -158,6 +158,62 @@ export async function createAdhocTask(params: {
   });
 }
 
+/**
+ * 一键审批：把所有待审核的打卡一次批完。
+ *
+ * 为什么不是在前端循环点 approveDailyTask：Next 对 Server Action 是**每个客户端串行派发**的
+ * （见 docs/01-app/02-guides/server-actions.md「Sequential dispatch on the client」），
+ * 10 条待审核就是 10 个来回排队，数据库在新加坡时家长要等好几秒。这里一个事务批完。
+ *
+ * 只动 PENDING_REVIEW（孩子点过「做完了」的）。**PENDING 不碰**——那些孩子根本没说做完，
+ * 一键批掉等于白送阳光。家长真要补打卡，用「打卡记录」里的单条补打卡。
+ *
+ * 并发安全：先给 Child 行加 FOR UPDATE 锁，再在锁内查待审核列表（写法同 pokedex 的 throwBall）。
+ * 家长手机上连点两下，第二次进来看到的是 0 条，不会发两份阳光。
+ */
+export async function approveAllPendingReviews(childId: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Child" WHERE id = ${childId} FOR UPDATE`;
+
+    const tasks = await tx.dailyTask.findMany({
+      where: { childId, status: TaskStatus.PENDING_REVIEW },
+      select: { id: true, title: true, points: true, date: true },
+    });
+    if (tasks.length === 0) return { count: 0, points: 0, restored: [] as string[] };
+
+    const now = new Date();
+    await tx.dailyTask.updateMany({
+      where: { id: { in: tasks.map((t) => t.id) } },
+      data: { status: TaskStatus.DONE, completedAt: now },
+    });
+    await tx.pointsLedger.createMany({
+      data: tasks.map((task) => ({
+        childId,
+        amount: task.points,
+        reason: `完成任务：${task.title}`,
+        type: LedgerType.TASK_COMPLETE,
+        dailyTaskId: task.id,
+      })),
+    });
+
+    // 待审核可能横跨好几天（家长忘了批几天）。每个涉及到的日子都要看一眼：
+    // 补上这些分之后够不够 5 阳光，够了就把那天跑掉的那只接回来。
+    // 按日期去重，同一天只算一次。
+    const dates = [...new Map(tasks.map((t) => [t.date.getTime(), t.date])).values()];
+    const restored: string[] = [];
+    for (const date of dates) {
+      const back = await restoreFledIfRecovered(tx, childId, date);
+      if (back) restored.push(back.nameZh);
+    }
+
+    return {
+      count: tasks.length,
+      points: tasks.reduce((sum, t) => sum + t.points, 0),
+      restored,
+    };
+  });
+}
+
 /** 孩子提交打卡待审核：PENDING -> PENDING_REVIEW，不发阳光。对已经是 PENDING_REVIEW
  *  或 DONE 的重复调用是安全的（直接返回），方便前端重复点击不出错。 */
 export async function submitDailyTaskForReview(dailyTaskId: string, childId: string) {
